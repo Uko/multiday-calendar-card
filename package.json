@@ -1,10 +1,10 @@
 {
-  "name": "multi-day-calendar-card",
+  "name": "multiday-calendar-card",
   "version": "0.1.0",
   "private": true,
   "description": "Home Assistant custom Lovelace card for multi-day calendar schedule views.",
   "type": "module",
-  "main": "dist/multi-day-calendar-card.js",
+  "main": "dist/multiday-calendar-card.js",
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",

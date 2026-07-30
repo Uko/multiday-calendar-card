@@ -35,6 +35,34 @@ export function buildCalendarEventsPath(
   return `calendars/${encodeURIComponent(entityId)}?${query.toString()}`;
 }
 
+export type TimelineGeometry = {
+  fixedHeight: boolean;
+  timelineHeightPx: number;
+  slotHeightPx: number;
+  slotCount: number;
+};
+
+const DEFAULT_PIXELS_PER_HOUR = 56;
+
+export function timelineGeometry(
+  visibleHours: number,
+  slotMinutes: number,
+  fixedTimelineHeightPx?: number,
+): TimelineGeometry {
+  const fixedHeight = fixedTimelineHeightPx !== undefined;
+  const timelineHeightPx = fixedHeight
+    ? fixedTimelineHeightPx
+    : visibleHours * DEFAULT_PIXELS_PER_HOUR;
+  const slotCount = (visibleHours * 60) / slotMinutes;
+
+  return {
+    fixedHeight,
+    timelineHeightPx,
+    slotHeightPx: timelineHeightPx / slotCount,
+    slotCount,
+  };
+}
+
 export function eventPlacementForDay(
   event: CalendarApiEvent,
   day: Date,

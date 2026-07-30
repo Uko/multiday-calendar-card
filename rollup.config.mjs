@@ -2,9 +2,9 @@ import resolve from '@rollup/plugin-node-resolve';
 import typescript from '@rollup/plugin-typescript';
 
 export default {
-  input: 'src/multi-day-calendar-card.ts',
+  input: 'src/multiday-calendar-card.ts',
   output: {
-    file: 'dist/multi-day-calendar-card.js',
+    file: 'dist/multiday-calendar-card.js',
     format: 'es',
     sourcemap: true,
   },

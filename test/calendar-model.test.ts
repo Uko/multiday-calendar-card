@@ -5,6 +5,7 @@ import {
   buildCalendarEventsPath,
   eventPlacementForDay,
   eventRangeForDays,
+  timelineGeometry,
 } from '../src/calendar-model';
 
 test('buildCalendarEventsPath encodes the calendar entity and date range', () => {
@@ -78,4 +79,22 @@ test('eventPlacementForDay excludes all-day and out-of-day events', () => {
     ),
     undefined,
   );
+});
+
+test('timelineGeometry preserves the current 56 pixels-per-hour layout without a height limit', () => {
+  assert.deepEqual(timelineGeometry(16, 30), {
+    fixedHeight: false,
+    timelineHeightPx: 896,
+    slotHeightPx: 28,
+    slotCount: 32,
+  });
+});
+
+test('timelineGeometry derives timeline geometry from a fixed available height', () => {
+  assert.deepEqual(timelineGeometry(16, 30, 400), {
+    fixedHeight: true,
+    timelineHeightPx: 400,
+    slotHeightPx: 12.5,
+    slotCount: 32,
+  });
 });

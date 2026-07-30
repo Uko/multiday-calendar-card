@@ -12,6 +12,20 @@ function buildCalendarEventsPath(entityId, start, end) {
     });
     return `calendars/${encodeURIComponent(entityId)}?${query.toString()}`;
 }
+const DEFAULT_PIXELS_PER_HOUR = 56;
+function timelineGeometry(visibleHours, slotMinutes, fixedTimelineHeightPx) {
+    const fixedHeight = fixedTimelineHeightPx !== undefined;
+    const timelineHeightPx = fixedHeight
+        ? fixedTimelineHeightPx
+        : visibleHours * DEFAULT_PIXELS_PER_HOUR;
+    const slotCount = (visibleHours * 60) / slotMinutes;
+    return {
+        fixedHeight,
+        timelineHeightPx,
+        slotHeightPx: timelineHeightPx / slotCount,
+        slotCount,
+    };
+}
 function eventPlacementForDay(event, day, startHour, endHour) {
     if (!event.start.dateTime || !event.end.dateTime) {
         return undefined;
@@ -46,6 +60,7 @@ const DEFAULT_CONFIG = {
     start_hour: 6,
     end_hour: 22,
     slot_minutes: 30,
+    height: null,
     show_now_line: true,
     calendars: [],
 };
@@ -92,6 +107,10 @@ class MultiDayCalendarCard extends HTMLElement {
         if (!Number.isInteger(slotMinutes) || slotMinutes < 15 || slotMinutes > 60 || 60 % slotMinutes !== 0) {
             throw new Error('slot_minutes must divide one hour and be from 15 to 60');
         }
+        const height = config.height ?? DEFAULT_CONFIG.height;
+        if (height !== null && (!Number.isFinite(height) || height <= 0)) {
+            throw new Error('height must be a positive number of pixels when provided');
+        }
         const calendars = config.calendars ?? [];
         if (!calendars.every((calendar) => calendar.entity.startsWith('calendar.'))) {
             throw new Error('Every calendars entry requires a calendar.* entity');
@@ -103,6 +122,7 @@ class MultiDayCalendarCard extends HTMLElement {
             start_hour: startHour,
             end_hour: endHour,
             slot_minutes: slotMinutes,
+            height,
             calendars,
         };
         this._requestKey = undefined;
@@ -167,8 +187,10 @@ class MultiDayCalendarCard extends HTMLElement {
         const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
         const hourCount = config.end_hour - config.start_hour;
         const minutesVisible = hourCount * 60;
-        const timelineHeight = hourCount * 56;
-        const slotHeight = (config.slot_minutes / 60) * 56;
+        const geometry = timelineGeometry(hourCount, config.slot_minutes);
+        const timelineHeight = geometry.timelineHeightPx;
+        const slotHeight = geometry.slotHeightPx;
+        const fixedHeight = config.height !== null;
         const dateFormatter = new Intl.DateTimeFormat(locale, {
             weekday: 'short',
             month: 'short',
@@ -186,7 +208,8 @@ class MultiDayCalendarCard extends HTMLElement {
         const timeLabels = Array.from({ length: hourCount + 1 }, (_, index) => {
             const time = new Date(range.start);
             time.setHours(config.start_hour + index, 0, 0, 0);
-            return `<div class="time-label" style="top: ${index * 56}px">${escapeHtml(timeFormatter.format(time))}</div>`;
+            const top = fixedHeight ? `${(index / hourCount) * 100}%` : `${index * 56}px`;
+            return `<div class="time-label" style="top: ${top}">${escapeHtml(timeFormatter.format(time))}</div>`;
         }).join('');
         const dayColumns = days
             .map((day) => {
@@ -213,7 +236,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 : '';
             return `<section class="day-column">
           <header class="day-header${isToday ? ' today' : ''}">${escapeHtml(dateFormatter.format(day))}</header>
-          <div class="timeline" style="height: ${timelineHeight}px; --slot-height: ${slotHeight}px">
+          <div class="timeline" style="${fixedHeight ? '' : `height: ${timelineHeight}px;`} --slot-height: ${slotHeight}px; --slot-count: ${geometry.slotCount}">
             ${events}${nowLine}
           </div>
         </section>`;
@@ -230,15 +253,15 @@ class MultiDayCalendarCard extends HTMLElement {
                         ? '<div class="status">No timed events in this view.</div>'
                         : '';
         this.innerHTML = `
-      <ha-card header="${title}">
-        <div class="wrapper">
+      <ha-card class="${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? ` style="height: ${config.height}px"` : ''} header="${title}">
+        <div class="wrapper ${fixedHeight ? 'fixed-height' : ''}">
           ${status}
-          <div class="schedule" role="grid" aria-label="${title}">
-            <div class="time-axis" style="height: ${timelineHeight + 38}px">
+          <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${title}">
+            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? '' : ` style="height: ${timelineHeight + 38}px"`}>
               <div class="time-axis-spacer"></div>
-              ${timeLabels}
+              <div class="time-labels">${timeLabels}</div>
             </div>
-            <div class="day-columns">${dayColumns}</div>
+            <div class="day-columns ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>
           </div>
         </div>
       </ha-card>
@@ -247,33 +270,40 @@ class MultiDayCalendarCard extends HTMLElement {
         style.textContent = `
       ha-card { display: block; }
       .wrapper { padding: 12px; overflow-x: auto; }
+      .wrapper.fixed-height { box-sizing: border-box; height: calc(100% - 56px); display: flex; flex-direction: column; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
       .schedule { display: grid; grid-template-columns: 64px minmax(0, 1fr); min-width: 460px; }
+      .schedule.fixed-height { flex: 1; min-height: 0; }
       .time-axis { position: relative; color: var(--secondary-text-color); font-size: 0.75rem; }
+      .time-axis.fixed-height { height: 100%; }
       .time-axis-spacer { height: 38px; border-bottom: 1px solid var(--divider-color); }
+      .time-labels { position: relative; height: calc(100% - 38px); }
       .time-label { position: absolute; right: 8px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
       .day-columns { display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
+      .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
-      .day-header { height: 37px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--divider-color); font-weight: 600; font-size: 0.875rem; }
+      .day-columns.fixed-height .day-column { display: flex; flex-direction: column; }
+      .day-header { height: 37px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--divider-color); font-weight: 600; font-size: 0.875rem; flex: 0 0 auto; }
       .day-header.today { color: var(--primary-color); }
       .timeline { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--slot-height) - 1px), var(--divider-color) calc(var(--slot-height) - 1px), var(--divider-color) var(--slot-height)); }
+      .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
       .event { position: absolute; left: 4px; right: 4px; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 1.2; z-index: 1; }
       .event-summary { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .event-calendar { color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--error-color); z-index: 2; pointer-events: none; }
       @media (max-width: 600px) { .wrapper { padding: 8px; } .schedule { min-width: 380px; grid-template-columns: 52px minmax(0, 1fr); } .time-label { right: 5px; font-size: 0.68rem; } .event-calendar { display: none; } }
     `;
-        style.setAttribute('data-multi-day-calendar-card', '');
+        style.setAttribute('data-multiday-calendar-card', '');
         this.appendChild(style);
     }
 }
-customElements.define('multi-day-calendar-card', MultiDayCalendarCard);
+customElements.define('multiday-calendar-card', MultiDayCalendarCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
-    type: 'multi-day-calendar-card',
-    name: 'Multi Day Calendar Card',
+    type: 'multiday-calendar-card',
+    name: 'Multiday Calendar Card',
     description: 'Read-only multi-day schedule card for Home Assistant calendars.',
 });
-//# sourceMappingURL=multi-day-calendar-card.js.map
+//# sourceMappingURL=multiday-calendar-card.js.map

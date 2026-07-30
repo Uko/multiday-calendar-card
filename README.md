@@ -1,4 +1,4 @@
-# multi-day-calendar-card
+# multiday-calendar-card
 
 A Home Assistant custom Lovelace card for readable multi-day schedule views.
 
@@ -62,12 +62,14 @@ npm run build
 ## Proposed Lovelace usage
 
 ```yaml
-type: custom:multi-day-calendar-card
+type: custom:multiday-calendar-card
 title: Calendar
 days: 2
 start_hour: 6
 end_hour: 22
 slot_minutes: 30
+# Optional fixed outer-card height in pixels. Omit to retain auto sizing.
+height: 480
 show_now_line: true
 calendars:
   - entity: calendar.example_household
