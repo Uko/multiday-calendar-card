@@ -63,6 +63,11 @@ export function timelineGeometry(
   };
 }
 
+export function displayTitle(title: string | undefined): string | undefined {
+  const trimmed = title?.trim();
+  return trimmed || undefined;
+}
+
 export function eventPlacementForDay(
   event: CalendarApiEvent,
   day: Date,

@@ -26,6 +26,10 @@ function timelineGeometry(visibleHours, slotMinutes, fixedTimelineHeightPx) {
         slotCount,
     };
 }
+function displayTitle(title) {
+    const trimmed = title?.trim();
+    return trimmed || undefined;
+}
 function eventPlacementForDay(event, day, startHour, endHour) {
     if (!event.start.dateTime || !event.end.dateTime) {
         return undefined;
@@ -242,7 +246,9 @@ class MultiDayCalendarCard extends HTMLElement {
         </section>`;
         })
             .join('');
-        const title = escapeHtml(config.title ?? 'Multi-day calendar');
+        const title = displayTitle(config.title);
+        const accessibleTitle = title ?? 'Multi-day calendar';
+        const hasTitle = title !== undefined;
         const status = this._loading
             ? '<div class="status">Loading calendar events…</div>'
             : this._error
@@ -253,10 +259,10 @@ class MultiDayCalendarCard extends HTMLElement {
                         ? '<div class="status">No timed events in this view.</div>'
                         : '';
         this.innerHTML = `
-      <ha-card class="${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? ` style="height: ${config.height}px"` : ''} header="${title}">
-        <div class="wrapper ${fixedHeight ? 'fixed-height' : ''}">
+      <ha-card class="${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? ` style="height: ${config.height}px"` : ''}${hasTitle ? ` header="${escapeHtml(title)}"` : ''}>
+        <div class="wrapper ${fixedHeight ? 'fixed-height' : ''}${hasTitle ? '' : ' titleless'}">
           ${status}
-          <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${title}">
+          <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
             <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? '' : ` style="height: ${timelineHeight + 38}px"`}>
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
@@ -271,6 +277,7 @@ class MultiDayCalendarCard extends HTMLElement {
       ha-card { display: block; }
       .wrapper { padding: 12px; overflow-x: auto; }
       .wrapper.fixed-height { box-sizing: border-box; height: calc(100% - 56px); display: flex; flex-direction: column; }
+      .wrapper.fixed-height.titleless { height: 100%; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
       .schedule { display: grid; grid-template-columns: 64px minmax(0, 1fr); min-width: 460px; }
@@ -288,7 +295,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-header { height: 37px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--divider-color); font-weight: 600; font-size: 0.875rem; flex: 0 0 auto; }
       .day-header.today { color: var(--primary-color); }
       .timeline { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--slot-height) - 1px), var(--divider-color) calc(var(--slot-height) - 1px), var(--divider-color) var(--slot-height)); }
-      .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
+      .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--divider-color) 0); background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
       .event { position: absolute; left: 4px; right: 4px; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 1.2; z-index: 1; }
       .event-summary { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .event-calendar { color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

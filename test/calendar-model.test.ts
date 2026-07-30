@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   buildCalendarEventsPath,
   eventPlacementForDay,
+  displayTitle,
   eventRangeForDays,
   timelineGeometry,
 } from '../src/calendar-model';
@@ -47,6 +48,12 @@ test('eventPlacementForDay clips an event to visible hours within one day', () =
     startMinutes: 360,
     durationMinutes: 75,
   });
+});
+
+test('displayTitle omits blank titles but retains meaningful text', () => {
+  assert.equal(displayTitle(undefined), undefined);
+  assert.equal(displayTitle('   '), undefined);
+  assert.equal(displayTitle(' Calendar '), 'Calendar');
 });
 
 test('eventPlacementForDay excludes all-day and out-of-day events', () => {
