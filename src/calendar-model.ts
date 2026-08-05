@@ -35,6 +35,21 @@ export function buildCalendarEventsPath(
   return `calendars/${encodeURIComponent(entityId)}?${query.toString()}`;
 }
 
+export const DEFAULT_REFRESH_INTERVAL_MINUTES = 30;
+export const VISIBILITY_REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
+
+export function refreshIntervalMs(intervalMinutes: number | undefined): number {
+  const minutes = intervalMinutes ?? DEFAULT_REFRESH_INTERVAL_MINUTES;
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    throw new Error('refresh_interval must be a positive finite number of minutes');
+  }
+  return minutes * 60 * 1000;
+}
+
+export function shouldRefreshAfterVisibility(nowMs: number, lastUpdateMs: number): boolean {
+  return nowMs - lastUpdateMs > VISIBILITY_REFRESH_THRESHOLD_MS;
+}
+
 export type TimelineGeometry = {
   fixedHeight: boolean;
   timelineHeightPx: number;

@@ -12,6 +12,18 @@ function buildCalendarEventsPath(entityId, start, end) {
     });
     return `calendars/${encodeURIComponent(entityId)}?${query.toString()}`;
 }
+const DEFAULT_REFRESH_INTERVAL_MINUTES = 30;
+const VISIBILITY_REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
+function refreshIntervalMs(intervalMinutes) {
+    const minutes = intervalMinutes ?? DEFAULT_REFRESH_INTERVAL_MINUTES;
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+        throw new Error('refresh_interval must be a positive finite number of minutes');
+    }
+    return minutes * 60 * 1000;
+}
+function shouldRefreshAfterVisibility(nowMs, lastUpdateMs) {
+    return nowMs - lastUpdateMs > VISIBILITY_REFRESH_THRESHOLD_MS;
+}
 const DEFAULT_PIXELS_PER_HOUR = 56;
 function timelineGeometry(visibleHours, slotMinutes, fixedTimelineHeightPx) {
     const fixedHeight = fixedTimelineHeightPx !== undefined;
@@ -64,6 +76,7 @@ const DEFAULT_CONFIG = {
     start_hour: 6,
     end_hour: 22,
     slot_minutes: 30,
+    refresh_interval: 30,
     height: null,
     show_now_line: true,
     calendars: [],
@@ -93,6 +106,13 @@ class MultiDayCalendarCard extends HTMLElement {
         super(...arguments);
         this._events = [];
         this._loading = false;
+        this._lastEventsUpdateMs = 0;
+        this.handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' &&
+                shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs)) {
+                void this.loadEvents(true);
+            }
+        };
     }
     setConfig(config) {
         if (!config?.type) {
@@ -111,6 +131,8 @@ class MultiDayCalendarCard extends HTMLElement {
         if (!Number.isInteger(slotMinutes) || slotMinutes < 15 || slotMinutes > 60 || 60 % slotMinutes !== 0) {
             throw new Error('slot_minutes must divide one hour and be from 15 to 60');
         }
+        const refreshInterval = Number(config.refresh_interval ?? DEFAULT_CONFIG.refresh_interval);
+        refreshIntervalMs(refreshInterval);
         const height = config.height ?? DEFAULT_CONFIG.height;
         if (height !== null && (!Number.isFinite(height) || height <= 0)) {
             throw new Error('height must be a positive number of pixels when provided');
@@ -126,12 +148,15 @@ class MultiDayCalendarCard extends HTMLElement {
             start_hour: startHour,
             end_hour: endHour,
             slot_minutes: slotMinutes,
+            refresh_interval: refreshInterval,
             height,
             calendars,
         };
         this._requestKey = undefined;
         this.render();
         void this.loadEvents();
+        if (this.isConnected)
+            this.startRefreshTimer();
     }
     set hass(hass) {
         this._hass = hass;
@@ -144,8 +169,27 @@ class MultiDayCalendarCard extends HTMLElement {
     connectedCallback() {
         this.render();
         void this.loadEvents();
+        this.startRefreshTimer();
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
     }
-    async loadEvents() {
+    disconnectedCallback() {
+        if (this._refreshTimerId !== undefined) {
+            clearTimeout(this._refreshTimerId);
+            this._refreshTimerId = undefined;
+        }
+        document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    startRefreshTimer() {
+        if (!this._config)
+            return;
+        if (this._refreshTimerId !== undefined)
+            clearTimeout(this._refreshTimerId);
+        this._refreshTimerId = window.setTimeout(() => {
+            void this.loadEvents(true);
+            this.startRefreshTimer();
+        }, refreshIntervalMs(this._config.refresh_interval));
+    }
+    async loadEvents(force = false) {
         if (!this._config || !this._hass)
             return;
         const range = eventRangeForDays(new Date(), this._config.days);
@@ -154,7 +198,7 @@ class MultiDayCalendarCard extends HTMLElement {
             start: range.start.toISOString(),
             end: range.end.toISOString(),
         });
-        if (key === this._requestKey)
+        if (!force && key === this._requestKey)
             return;
         this._requestKey = key;
         this._loading = true;
@@ -168,6 +212,7 @@ class MultiDayCalendarCard extends HTMLElement {
             if (this._requestKey !== key)
                 return;
             this._events = eventGroups.flatMap(({ calendar, events }) => events.map((event) => ({ calendar, event })));
+            this._lastEventsUpdateMs = Date.now();
         }
         catch (error) {
             if (this._requestKey !== key)

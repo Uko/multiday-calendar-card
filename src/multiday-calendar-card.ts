@@ -3,6 +3,8 @@ import {
   displayTitle,
   eventPlacementForDay,
   eventRangeForDays,
+  refreshIntervalMs,
+  shouldRefreshAfterVisibility,
   timelineGeometry,
   type CalendarApiEvent,
 } from './calendar-model';
@@ -28,6 +30,8 @@ type MultiDayCalendarCardConfig = {
   start_hour?: number;
   end_hour?: number;
   slot_minutes?: number;
+  /** Minutes between calendar API refreshes. */
+  refresh_interval?: number;
   /** Fixed outer-card height in pixels. Omit for the legacy auto-height layout. */
   height?: number | null;
   show_now_line?: boolean;
@@ -55,6 +59,7 @@ const DEFAULT_CONFIG: Required<
   start_hour: 6,
   end_hour: 22,
   slot_minutes: 30,
+  refresh_interval: 30,
   height: null,
   show_now_line: true,
   calendars: [],
@@ -95,6 +100,8 @@ class MultiDayCalendarCard extends HTMLElement {
   private _loading = false;
   private _error?: string;
   private _requestKey?: string;
+  private _refreshTimerId?: number;
+  private _lastEventsUpdateMs = 0;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
     if (!config?.type) {
@@ -117,6 +124,9 @@ class MultiDayCalendarCard extends HTMLElement {
       throw new Error('slot_minutes must divide one hour and be from 15 to 60');
     }
 
+    const refreshInterval = Number(config.refresh_interval ?? DEFAULT_CONFIG.refresh_interval);
+    refreshIntervalMs(refreshInterval);
+
     const height = config.height ?? DEFAULT_CONFIG.height;
     if (height !== null && (!Number.isFinite(height) || height <= 0)) {
       throw new Error('height must be a positive number of pixels when provided');
@@ -134,12 +144,14 @@ class MultiDayCalendarCard extends HTMLElement {
       start_hour: startHour,
       end_hour: endHour,
       slot_minutes: slotMinutes,
+      refresh_interval: refreshInterval,
       height,
       calendars,
     };
     this._requestKey = undefined;
     this.render();
     void this.loadEvents();
+    if (this.isConnected) this.startRefreshTimer();
   }
 
   set hass(hass: HomeAssistantLike) {
@@ -155,9 +167,38 @@ class MultiDayCalendarCard extends HTMLElement {
   connectedCallback(): void {
     this.render();
     void this.loadEvents();
+    this.startRefreshTimer();
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
-  private async loadEvents(): Promise<void> {
+  disconnectedCallback(): void {
+    if (this._refreshTimerId !== undefined) {
+      clearTimeout(this._refreshTimerId);
+      this._refreshTimerId = undefined;
+    }
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+  }
+
+  private handleVisibilityChange = (): void => {
+    if (
+      document.visibilityState === 'visible' &&
+      shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs)
+    ) {
+      void this.loadEvents(true);
+    }
+  };
+
+  private startRefreshTimer(): void {
+    if (!this._config) return;
+    if (this._refreshTimerId !== undefined) clearTimeout(this._refreshTimerId);
+
+    this._refreshTimerId = window.setTimeout(() => {
+      void this.loadEvents(true);
+      this.startRefreshTimer();
+    }, refreshIntervalMs(this._config.refresh_interval));
+  }
+
+  private async loadEvents(force = false): Promise<void> {
     if (!this._config || !this._hass) return;
 
     const range = eventRangeForDays(new Date(), this._config.days);
@@ -166,7 +207,7 @@ class MultiDayCalendarCard extends HTMLElement {
       start: range.start.toISOString(),
       end: range.end.toISOString(),
     });
-    if (key === this._requestKey) return;
+    if (!force && key === this._requestKey) return;
 
     this._requestKey = key;
     this._loading = true;
@@ -188,6 +229,7 @@ class MultiDayCalendarCard extends HTMLElement {
       this._events = eventGroups.flatMap(({ calendar, events }) =>
         events.map((event) => ({ calendar, event })),
       );
+      this._lastEventsUpdateMs = Date.now();
     } catch (error) {
       if (this._requestKey !== key) return;
       this._events = [];

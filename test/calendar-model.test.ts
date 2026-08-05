@@ -6,6 +6,8 @@ import {
   eventPlacementForDay,
   displayTitle,
   eventRangeForDays,
+  refreshIntervalMs,
+  shouldRefreshAfterVisibility,
   timelineGeometry,
 } from '../src/calendar-model';
 
@@ -86,6 +88,22 @@ test('eventPlacementForDay excludes all-day and out-of-day events', () => {
     ),
     undefined,
   );
+});
+
+test('refreshIntervalMs defaults to the Calendar Card Pro 30-minute cadence and permits a valid override', () => {
+  assert.equal(refreshIntervalMs(undefined), 30 * 60 * 1000);
+  assert.equal(refreshIntervalMs(5), 5 * 60 * 1000);
+});
+
+test('refreshIntervalMs rejects non-positive and non-finite intervals', () => {
+  assert.throws(() => refreshIntervalMs(0), /positive finite number/);
+  assert.throws(() => refreshIntervalMs(-1), /positive finite number/);
+  assert.throws(() => refreshIntervalMs(Number.NaN), /positive finite number/);
+});
+
+test('shouldRefreshAfterVisibility waits five minutes before refetching a visible card', () => {
+  assert.equal(shouldRefreshAfterVisibility(300_000, 0), false);
+  assert.equal(shouldRefreshAfterVisibility(300_001, 0), true);
 });
 
 test('timelineGeometry preserves the current 56 pixels-per-hour layout without a height limit', () => {
