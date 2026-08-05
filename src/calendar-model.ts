@@ -4,11 +4,51 @@ export type CalendarApiEvent = {
   end: { dateTime?: string; date?: string };
 };
 
+export const CALENDAR_DAY_NAME_HEIGHT_PX = 38;
+export const ALL_DAY_EVENT_ROW_HEIGHT_PX = 22;
+
+export function calendarHeaderHeight(allDayEventCount: number): number {
+  return CALENDAR_DAY_NAME_HEIGHT_PX + allDayEventCount * ALL_DAY_EVENT_ROW_HEIGHT_PX;
+}
+
 export type EventPlacement = {
   summary: string;
   startMinutes: number;
   durationMinutes: number;
 };
+
+export type AllDayEventPlacement = {
+  summary: string;
+};
+
+function localDateFromIsoDate(value: string): Date | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.getFullYear() === Number(match[1]) &&
+    date.getMonth() === Number(match[2]) - 1 &&
+    date.getDate() === Number(match[3])
+    ? date
+    : undefined;
+}
+
+export function allDayEventPlacementForDay(
+  event: CalendarApiEvent,
+  day: Date,
+): AllDayEventPlacement | undefined {
+  if (!event.start.date || !event.end.date) return undefined;
+
+  const start = localDateFromIsoDate(event.start.date);
+  const end = localDateFromIsoDate(event.end.date);
+  if (!start || !end || end <= start) return undefined;
+
+  const dayStart = new Date(day);
+  dayStart.setHours(0, 0, 0, 0);
+  if (dayStart < start || dayStart >= end) return undefined;
+
+  return { summary: event.summary?.trim() || 'Untitled event' };
+}
 
 export function eventRangeForDays(now: Date, days: number): {
   start: Date;

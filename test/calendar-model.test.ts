@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
+  allDayEventPlacementForDay,
+  calendarHeaderHeight,
   buildCalendarEventsPath,
   eventPlacementForDay,
   displayTitle,
@@ -56,6 +58,60 @@ test('displayTitle omits blank titles but retains meaningful text', () => {
   assert.equal(displayTitle(undefined), undefined);
   assert.equal(displayTitle('   '), undefined);
   assert.equal(displayTitle(' Calendar '), 'Calendar');
+});
+
+test('allDayEventPlacementForDay includes date-only events on every covered local day', () => {
+  const event = {
+    summary: 'Festival',
+    start: { date: '2026-07-28' },
+    end: { date: '2026-07-30' },
+  };
+
+  assert.deepEqual(
+    allDayEventPlacementForDay(event, new Date(2026, 6, 28)),
+    { summary: 'Festival' },
+  );
+  assert.deepEqual(
+    allDayEventPlacementForDay(event, new Date(2026, 6, 29)),
+    { summary: 'Festival' },
+  );
+  assert.equal(allDayEventPlacementForDay(event, new Date(2026, 6, 30)), undefined);
+});
+
+test('allDayEventPlacementForDay excludes timed, malformed, and empty all-day events', () => {
+  const day = new Date(2026, 6, 28);
+
+  assert.equal(
+    allDayEventPlacementForDay(
+      {
+        summary: 'Timed event',
+        start: { dateTime: '2026-07-28T09:00:00.000Z' },
+        end: { dateTime: '2026-07-28T10:00:00.000Z' },
+      },
+      day,
+    ),
+    undefined,
+  );
+  assert.equal(
+    allDayEventPlacementForDay(
+      { summary: 'Broken', start: { date: '2026-07-30' }, end: { date: '2026-07-28' } },
+      day,
+    ),
+    undefined,
+  );
+  assert.deepEqual(
+    allDayEventPlacementForDay(
+      { start: { date: '2026-07-28' }, end: { date: '2026-07-29' } },
+      day,
+    ),
+    { summary: 'Untitled event' },
+  );
+});
+
+test('calendarHeaderHeight reserves one compact row per all-day event', () => {
+  assert.equal(calendarHeaderHeight(0), 38);
+  assert.equal(calendarHeaderHeight(1), 60);
+  assert.equal(calendarHeaderHeight(3), 104);
 });
 
 test('eventPlacementForDay excludes all-day and out-of-day events', () => {

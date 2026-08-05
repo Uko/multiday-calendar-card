@@ -7,10 +7,12 @@ A Home Assistant custom Lovelace card for readable multi-day schedule views.
 The first functional slice is implemented:
 - fetches configured `calendar.*` entities through the authenticated Home Assistant API
 - renders timed events across 1–7 day columns
+- renders all-day events as compact single-line bars beneath each day name
+- recalculates the shared day-header height, preserving aligned time labels and shrinking the fixed-height timeline grid when required
 - clips events to the configured visible-hour range
 - displays a now line and per-calendar labels/colors
 
-All-day events and overlap lane packing are deliberately deferred to later iterations.
+Overlap lane packing is deliberately deferred to a later iteration.
 
 ## Intended product direction
 
@@ -34,7 +36,6 @@ The card is meant to solve a scheduler-style use case that existing planner card
 
 ### Later
 - multiple calendars with color mapping
-- all-day area
 - overlap packing improvements
 - responsive kiosk tuning
 - optional richer labels/location display

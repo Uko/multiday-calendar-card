@@ -1,5 +1,7 @@
 import {
+  allDayEventPlacementForDay,
   buildCalendarEventsPath,
+  calendarHeaderHeight,
   displayTitle,
   eventPlacementForDay,
   eventRangeForDays,
@@ -270,6 +272,14 @@ class MultiDayCalendarCard extends HTMLElement {
       day.setDate(day.getDate() + index);
       return day;
     });
+    const dayHeaderHeight = calendarHeaderHeight(
+      Math.max(
+        0,
+        ...days.map((day) =>
+          this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length,
+        ),
+      ),
+    );
 
     const timeLabels = Array.from({ length: hourCount + 1 }, (_, index) => {
       const time = new Date(range.start);
@@ -280,6 +290,21 @@ class MultiDayCalendarCard extends HTMLElement {
 
     const dayColumns = days
       .map((day) => {
+        const allDayPlacements = this._events
+          .map(({ calendar, event }) => ({
+            calendar,
+            placement: allDayEventPlacementForDay(event, day),
+          }))
+          .filter(
+            (item): item is { calendar: CalendarConfig; placement: NonNullable<typeof item.placement> } =>
+              item.placement !== undefined,
+          );
+        const allDayEvents = allDayPlacements
+          .map(({ calendar, placement }) => {
+            const calendarName = calendar.label ?? calendar.entity;
+            return `<div class="all-day-event" style="--event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">${escapeHtml(placement.summary)}</div>`;
+          })
+          .join('');
         const placements = this._events
           .map(({ calendar, event }) => ({
             calendar,
@@ -311,7 +336,10 @@ class MultiDayCalendarCard extends HTMLElement {
             ? `<div class="now-line" style="top: ${((now.getHours() * 60 + now.getMinutes() - config.start_hour * 60) / minutesVisible) * 100}%"></div>`
             : '';
         return `<section class="day-column">
-          <header class="day-header${isToday ? ' today' : ''}">${escapeHtml(dateFormatter.format(day))}</header>
+          <header class="day-header${isToday ? ' today' : ''}" style="--day-header-height: ${dayHeaderHeight}px">
+            <div class="day-name">${escapeHtml(dateFormatter.format(day))}</div>
+            ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
+          </header>
           <div class="timeline" style="${fixedHeight ? '' : `height: ${timelineHeight}px;`} --slot-height: ${slotHeight}px; --slot-count: ${geometry.slotCount}">
             ${events}${nowLine}
           </div>
@@ -337,7 +365,7 @@ class MultiDayCalendarCard extends HTMLElement {
         <div class="wrapper ${fixedHeight ? 'fixed-height' : ''}${hasTitle ? '' : ' titleless'}">
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
-            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? '' : ` style="height: ${timelineHeight + 38}px"`}>
+            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}" style="--day-header-height: ${dayHeaderHeight}px;${fixedHeight ? '' : ` height: ${timelineHeight + dayHeaderHeight}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>
@@ -359,16 +387,19 @@ class MultiDayCalendarCard extends HTMLElement {
       .schedule.fixed-height { flex: 1; min-height: 0; }
       .time-axis { position: relative; color: var(--secondary-text-color); font-size: 0.75rem; }
       .time-axis.fixed-height { height: 100%; }
-      .time-axis-spacer { height: 38px; border-bottom: 1px solid var(--divider-color); }
-      .time-labels { position: relative; height: calc(100% - 38px); }
+      .time-axis-spacer { height: var(--day-header-height); border-bottom: 1px solid var(--divider-color); }
+      .time-labels { position: relative; height: calc(100% - var(--day-header-height)); }
       .time-label { position: absolute; right: 8px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
       .day-columns { display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
       .day-columns.fixed-height .day-column { display: flex; flex-direction: column; }
-      .day-header { height: 37px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--divider-color); font-weight: 600; font-size: 0.875rem; flex: 0 0 auto; }
-      .day-header.today { color: var(--primary-color); }
+      .day-header { height: var(--day-header-height); box-sizing: border-box; display: flex; flex-direction: column; border-bottom: 1px solid var(--divider-color); font-weight: 600; font-size: 0.875rem; flex: 0 0 auto; }
+      .day-name { height: 37px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+      .day-header.today .day-name { color: var(--primary-color); }
+      .all-day-events { display: grid; grid-auto-rows: 18px; gap: 4px; padding: 0 4px 4px; min-height: 0; }
+      .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 16px; }
       .timeline { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--slot-height) - 1px), var(--divider-color) calc(var(--slot-height) - 1px), var(--divider-color) var(--slot-height)); }
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--divider-color) 0); background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
       .event { position: absolute; left: 4px; right: 4px; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 1.2; z-index: 1; }
