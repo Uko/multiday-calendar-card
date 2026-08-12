@@ -11,8 +11,7 @@ The first functional slice is implemented:
 - recalculates the shared day-header height, preserving aligned time labels and shrinking the fixed-height timeline grid when required
 - clips events to the configured visible-hour range
 - displays a now line and per-calendar labels/colors
-
-Overlap lane packing is deliberately deferred to a later iteration.
+- packs overlapping timed events into adjacent lanes, with a configurable cap and summary event for overflow
 
 ## Intended product direction
 
@@ -36,7 +35,6 @@ The card is meant to solve a scheduler-style use case that existing planner card
 
 ### Later
 - multiple calendars with color mapping
-- overlap packing improvements
 - responsive kiosk tuning
 - optional richer labels/location display
 
@@ -72,6 +70,10 @@ slot_minutes: 30
 # Optional fixed outer-card height in pixels. Omit to retain auto sizing.
 height: 480
 show_now_line: true
+# Maximum parallel timed-event lanes in each overlapping group (default: 3).
+# At a cap above 1, excess events become a colored "+N more" summary bubble.
+# At 1, only the first event in an overlap group is shown.
+max_simultaneous_events: 3
 calendars:
   - entity: calendar.example_household
     label: Household

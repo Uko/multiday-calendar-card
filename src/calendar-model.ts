@@ -21,6 +21,128 @@ export type AllDayEventPlacement = {
   summary: string;
 };
 
+export type TimedEventLaneInput<T> = {
+  event: T;
+  startMinutes: number;
+  durationMinutes: number;
+};
+
+export type TimedEventLane<T> = TimedEventLaneInput<T> & {
+  lane: number;
+  laneCount: number;
+};
+
+export type TimedEventOverflow<T> = {
+  startMinutes: number;
+  durationMinutes: number;
+  lane: number;
+  laneCount: number;
+  hiddenEvents: T[];
+};
+
+export type TimedEventLaneLayout<T> = {
+  events: TimedEventLane<T>[];
+  overflows: TimedEventOverflow<T>[];
+};
+
+function eventEndMinutes<T>(event: TimedEventLaneInput<T>): number {
+  return event.startMinutes + event.durationMinutes;
+}
+
+function laneEvents<T>(events: TimedEventLaneInput<T>[], laneCount: number): TimedEventLane<T>[] {
+  const laneEnds: number[] = [];
+
+  return events.map((event) => {
+    let lane = laneEnds.findIndex((endMinutes) => endMinutes <= event.startMinutes);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = eventEndMinutes(event);
+    return { ...event, lane, laneCount };
+  });
+}
+
+/**
+ * Arrange connected timed-event overlap groups into lanes. If a group needs more
+ * lanes than maxSimultaneousEvents, retain max-1 real events and replace the rest
+ * with one summary event spanning their combined time range. A cap of one omits
+ * the remaining events as requested.
+ */
+export function layoutTimedEventLanes<T>(
+  events: TimedEventLaneInput<T>[],
+  maxSimultaneousEvents: number,
+): TimedEventLaneLayout<T> {
+  if (!Number.isInteger(maxSimultaneousEvents) || maxSimultaneousEvents < 1) {
+    throw new Error('maxSimultaneousEvents must be a positive whole number');
+  }
+
+  const sorted = [...events].sort((left, right) =>
+    left.startMinutes - right.startMinutes ||
+    eventEndMinutes(right) - eventEndMinutes(left),
+  );
+  const components: TimedEventLaneInput<T>[][] = [];
+  let component: TimedEventLaneInput<T>[] = [];
+  let componentEnd = -Infinity;
+
+  for (const event of sorted) {
+    if (component.length > 0 && event.startMinutes >= componentEnd) {
+      components.push(component);
+      component = [];
+      componentEnd = -Infinity;
+    }
+    component.push(event);
+    componentEnd = Math.max(componentEnd, eventEndMinutes(event));
+  }
+  if (component.length > 0) components.push(component);
+
+  const laidOutEvents: TimedEventLane<T>[] = [];
+  const overflows: TimedEventOverflow<T>[] = [];
+  for (const overlapGroup of components) {
+    const fullyLaidOut = laneEvents(overlapGroup, overlapGroup.length);
+    const requiredLanes = Math.max(...fullyLaidOut.map((event) => event.lane + 1));
+    if (requiredLanes <= maxSimultaneousEvents) {
+      laidOutEvents.push(...laneEvents(overlapGroup, requiredLanes));
+      continue;
+    }
+
+    if (maxSimultaneousEvents === 1) {
+      laidOutEvents.push(...laneEvents(overlapGroup.slice(0, 1), 1));
+      continue;
+    }
+
+    const visibleEvents = overlapGroup.slice(0, maxSimultaneousEvents - 1);
+    const hiddenEvents = overlapGroup.slice(maxSimultaneousEvents - 1);
+    laidOutEvents.push(...laneEvents(visibleEvents, maxSimultaneousEvents));
+    const hiddenStart = Math.min(...hiddenEvents.map((event) => event.startMinutes));
+    const hiddenEnd = Math.max(...hiddenEvents.map(eventEndMinutes));
+    overflows.push({
+      startMinutes: hiddenStart,
+      durationMinutes: hiddenEnd - hiddenStart,
+      lane: maxSimultaneousEvents - 1,
+      laneCount: maxSimultaneousEvents,
+      hiddenEvents: hiddenEvents.map((event) => event.event),
+    });
+  }
+
+  return { events: laidOutEvents, overflows };
+}
+
+export function averageEventColors(colors: string[]): string | undefined {
+  const rgbValues = colors
+    .map((color) => /^#([0-9a-f]{6})$/i.exec(color)?.[1])
+    .filter((value): value is string => value !== undefined)
+    .map((hex) => [
+      Number.parseInt(hex.slice(0, 2), 16),
+      Number.parseInt(hex.slice(2, 4), 16),
+      Number.parseInt(hex.slice(4, 6), 16),
+    ]);
+  if (rgbValues.length === 0) return undefined;
+
+  const average = (index: number): string =>
+    Math.round(rgbValues.reduce((sum, rgb) => sum + rgb[index], 0) / rgbValues.length)
+      .toString(16)
+      .padStart(2, '0');
+  return `#${average(0)}${average(1)}${average(2)}`;
+}
+
 function localDateFromIsoDate(value: string): Date | undefined {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return undefined;

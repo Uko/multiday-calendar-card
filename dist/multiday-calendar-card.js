@@ -3,6 +3,89 @@ const ALL_DAY_EVENT_ROW_HEIGHT_PX = 22;
 function calendarHeaderHeight(allDayEventCount) {
     return CALENDAR_DAY_NAME_HEIGHT_PX + allDayEventCount * ALL_DAY_EVENT_ROW_HEIGHT_PX;
 }
+function eventEndMinutes(event) {
+    return event.startMinutes + event.durationMinutes;
+}
+function laneEvents(events, laneCount) {
+    const laneEnds = [];
+    return events.map((event) => {
+        let lane = laneEnds.findIndex((endMinutes) => endMinutes <= event.startMinutes);
+        if (lane < 0)
+            lane = laneEnds.length;
+        laneEnds[lane] = eventEndMinutes(event);
+        return { ...event, lane, laneCount };
+    });
+}
+/**
+ * Arrange connected timed-event overlap groups into lanes. If a group needs more
+ * lanes than maxSimultaneousEvents, retain max-1 real events and replace the rest
+ * with one summary event spanning their combined time range. A cap of one omits
+ * the remaining events as requested.
+ */
+function layoutTimedEventLanes(events, maxSimultaneousEvents) {
+    if (!Number.isInteger(maxSimultaneousEvents) || maxSimultaneousEvents < 1) {
+        throw new Error('maxSimultaneousEvents must be a positive whole number');
+    }
+    const sorted = [...events].sort((left, right) => left.startMinutes - right.startMinutes ||
+        eventEndMinutes(right) - eventEndMinutes(left));
+    const components = [];
+    let component = [];
+    let componentEnd = -Infinity;
+    for (const event of sorted) {
+        if (component.length > 0 && event.startMinutes >= componentEnd) {
+            components.push(component);
+            component = [];
+            componentEnd = -Infinity;
+        }
+        component.push(event);
+        componentEnd = Math.max(componentEnd, eventEndMinutes(event));
+    }
+    if (component.length > 0)
+        components.push(component);
+    const laidOutEvents = [];
+    const overflows = [];
+    for (const overlapGroup of components) {
+        const fullyLaidOut = laneEvents(overlapGroup, overlapGroup.length);
+        const requiredLanes = Math.max(...fullyLaidOut.map((event) => event.lane + 1));
+        if (requiredLanes <= maxSimultaneousEvents) {
+            laidOutEvents.push(...laneEvents(overlapGroup, requiredLanes));
+            continue;
+        }
+        if (maxSimultaneousEvents === 1) {
+            laidOutEvents.push(...laneEvents(overlapGroup.slice(0, 1), 1));
+            continue;
+        }
+        const visibleEvents = overlapGroup.slice(0, maxSimultaneousEvents - 1);
+        const hiddenEvents = overlapGroup.slice(maxSimultaneousEvents - 1);
+        laidOutEvents.push(...laneEvents(visibleEvents, maxSimultaneousEvents));
+        const hiddenStart = Math.min(...hiddenEvents.map((event) => event.startMinutes));
+        const hiddenEnd = Math.max(...hiddenEvents.map(eventEndMinutes));
+        overflows.push({
+            startMinutes: hiddenStart,
+            durationMinutes: hiddenEnd - hiddenStart,
+            lane: maxSimultaneousEvents - 1,
+            laneCount: maxSimultaneousEvents,
+            hiddenEvents: hiddenEvents.map((event) => event.event),
+        });
+    }
+    return { events: laidOutEvents, overflows };
+}
+function averageEventColors(colors) {
+    const rgbValues = colors
+        .map((color) => /^#([0-9a-f]{6})$/i.exec(color)?.[1])
+        .filter((value) => value !== undefined)
+        .map((hex) => [
+        Number.parseInt(hex.slice(0, 2), 16),
+        Number.parseInt(hex.slice(2, 4), 16),
+        Number.parseInt(hex.slice(4, 6), 16),
+    ]);
+    if (rgbValues.length === 0)
+        return undefined;
+    const average = (index) => Math.round(rgbValues.reduce((sum, rgb) => sum + rgb[index], 0) / rgbValues.length)
+        .toString(16)
+        .padStart(2, '0');
+    return `#${average(0)}${average(1)}${average(2)}`;
+}
 function localDateFromIsoDate(value) {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
     if (!match)
@@ -108,6 +191,7 @@ const DEFAULT_CONFIG = {
     refresh_interval: 30,
     height: null,
     show_now_line: true,
+    max_simultaneous_events: 3,
     calendars: [],
 };
 function escapeHtml(value) {
@@ -162,6 +246,10 @@ class MultiDayCalendarCard extends HTMLElement {
         }
         const refreshInterval = Number(config.refresh_interval ?? DEFAULT_CONFIG.refresh_interval);
         refreshIntervalMs(refreshInterval);
+        const maxSimultaneousEvents = Number(config.max_simultaneous_events ?? DEFAULT_CONFIG.max_simultaneous_events);
+        if (!Number.isInteger(maxSimultaneousEvents) || maxSimultaneousEvents < 1) {
+            throw new Error('max_simultaneous_events must be a positive whole number');
+        }
         const height = config.height ?? DEFAULT_CONFIG.height;
         if (height !== null && (!Number.isFinite(height) || height <= 0)) {
             throw new Error('height must be a positive number of pixels when provided');
@@ -178,6 +266,7 @@ class MultiDayCalendarCard extends HTMLElement {
             end_hour: endHour,
             slot_minutes: slotMinutes,
             refresh_interval: refreshInterval,
+            max_simultaneous_events: maxSimultaneousEvents,
             height,
             calendars,
         };
@@ -310,14 +399,33 @@ class MultiDayCalendarCard extends HTMLElement {
                 placement: eventPlacementForDay(event, day, config.start_hour, config.end_hour),
             }))
                 .filter((item) => item.placement !== undefined);
-            const events = placements
-                .map(({ calendar, placement }) => {
-                const top = ((placement.startMinutes - config.start_hour * 60) / minutesVisible) * 100;
-                const height = (placement.durationMinutes / minutesVisible) * 100;
+            const laneLayout = layoutTimedEventLanes(placements.map(({ calendar, placement }) => ({
+                event: { calendar, placement },
+                startMinutes: placement.startMinutes,
+                durationMinutes: placement.durationMinutes,
+            })), config.max_simultaneous_events);
+            const eventStyle = (startMinutes, durationMinutes, lane, laneCount) => {
+                const top = ((startMinutes - config.start_hour * 60) / minutesVisible) * 100;
+                const height = (durationMinutes / minutesVisible) * 100;
+                const laneWidth = 100 / laneCount;
+                return `top: ${top}%; height: ${height}%; left: calc(${lane * laneWidth}% + 4px); width: calc(${laneWidth}% - 8px)`;
+            };
+            const events = laneLayout.events
+                .map(({ event: { calendar, placement }, lane, laneCount }) => {
                 const calendarName = calendar.label ?? calendar.entity;
-                return `<div class="event" style="top: ${top}%; height: ${height}%; --event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">
+                return `<div class="event" style="${eventStyle(placement.startMinutes, placement.durationMinutes, lane, laneCount)}; --event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">
               <div class="event-summary">${escapeHtml(placement.summary)}</div>
               <div class="event-calendar">${escapeHtml(calendarName)}</div>
+            </div>`;
+            })
+                .join('');
+            const overflowEvents = laneLayout.overflows
+                .map(({ startMinutes, durationMinutes, lane, laneCount, hiddenEvents }) => {
+                const hiddenCalendars = hiddenEvents.map(({ calendar }) => calendar.label ?? calendar.entity);
+                const color = averageEventColors(hiddenEvents.map(({ calendar }) => calendar.color ?? '')) ?? 'var(--primary-color)';
+                const count = hiddenEvents.length;
+                return `<div class="event event-overflow" style="${eventStyle(startMinutes, durationMinutes, lane, laneCount)}; --event-color: ${color}" title="${escapeHtml(`${count} undisplayed event${count === 1 ? '' : 's'} — ${hiddenCalendars.join(', ')}`)}">
+              <div class="event-summary">+${count} more</div>
             </div>`;
             })
                 .join('');
@@ -331,7 +439,7 @@ class MultiDayCalendarCard extends HTMLElement {
             ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
           </header>
           <div class="timeline" style="${fixedHeight ? '' : `height: ${timelineHeight}px;`} --slot-height: ${slotHeight}px; --slot-count: ${geometry.slotCount}">
-            ${events}${nowLine}
+            ${events}${overflowEvents}${nowLine}
           </div>
         </section>`;
         })
@@ -389,7 +497,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 16px; }
       .timeline { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--slot-height) - 1px), var(--divider-color) calc(var(--slot-height) - 1px), var(--divider-color) var(--slot-height)); }
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--divider-color) 0); background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
-      .event { position: absolute; left: 4px; right: 4px; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 1.2; z-index: 1; }
+      .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 1.2; z-index: 1; }
+      .event-overflow { border-left-style: dashed; font-style: italic; }
       .event-summary { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .event-calendar { color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--error-color); z-index: 2; pointer-events: none; }

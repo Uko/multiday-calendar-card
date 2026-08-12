@@ -11,6 +11,8 @@ import {
   refreshIntervalMs,
   shouldRefreshAfterVisibility,
   timelineGeometry,
+  layoutTimedEventLanes,
+  averageEventColors,
 } from '../src/calendar-model';
 
 test('buildCalendarEventsPath encodes the calendar entity and date range', () => {
@@ -178,4 +180,59 @@ test('timelineGeometry derives timeline geometry from a fixed available height',
     slotHeightPx: 12.5,
     slotCount: 32,
   });
+});
+
+test('layoutTimedEventLanes gives overlapping events adjacent lanes but lets boundary-touching events reuse a lane', () => {
+  const layout = layoutTimedEventLanes([
+    { event: 'A', startMinutes: 540, durationMinutes: 60 },
+    { event: 'B', startMinutes: 540, durationMinutes: 30 },
+    { event: 'C', startMinutes: 570, durationMinutes: 30 },
+    { event: 'D', startMinutes: 600, durationMinutes: 30 },
+  ], 3);
+
+  assert.deepEqual(layout.events, [
+    { event: 'A', startMinutes: 540, durationMinutes: 60, lane: 0, laneCount: 2 },
+    { event: 'B', startMinutes: 540, durationMinutes: 30, lane: 1, laneCount: 2 },
+    { event: 'C', startMinutes: 570, durationMinutes: 30, lane: 1, laneCount: 2 },
+    { event: 'D', startMinutes: 600, durationMinutes: 30, lane: 0, laneCount: 1 },
+  ]);
+  assert.equal(layout.overflows.length, 0);
+});
+
+test('layoutTimedEventLanes keeps max-1 events and summarizes the remaining overlap component when the cap is exceeded', () => {
+  const layout = layoutTimedEventLanes([
+    { event: 'A', startMinutes: 540, durationMinutes: 60 },
+    { event: 'B', startMinutes: 540, durationMinutes: 30 },
+    { event: 'C', startMinutes: 540, durationMinutes: 45 },
+    { event: 'D', startMinutes: 540, durationMinutes: 15 },
+  ], 3);
+
+  assert.deepEqual(layout.events, [
+    { event: 'A', startMinutes: 540, durationMinutes: 60, lane: 0, laneCount: 3 },
+    { event: 'C', startMinutes: 540, durationMinutes: 45, lane: 1, laneCount: 3 },
+  ]);
+  assert.deepEqual(layout.overflows, [{
+    startMinutes: 540,
+    durationMinutes: 30,
+    lane: 2,
+    laneCount: 3,
+    hiddenEvents: ['B', 'D'],
+  }]);
+});
+
+test('layoutTimedEventLanes displays only the first event in an overlap component when the cap is one', () => {
+  const layout = layoutTimedEventLanes([
+    { event: 'A', startMinutes: 540, durationMinutes: 60 },
+    { event: 'B', startMinutes: 540, durationMinutes: 30 },
+  ], 1);
+
+  assert.deepEqual(layout.events, [
+    { event: 'A', startMinutes: 540, durationMinutes: 60, lane: 0, laneCount: 1 },
+  ]);
+  assert.equal(layout.overflows.length, 0);
+});
+
+test('averageEventColors averages valid RGB colours and returns undefined when no valid colours exist', () => {
+  assert.equal(averageEventColors(['#ff0000', '#0000ff']), '#800080');
+  assert.equal(averageEventColors(['invalid']), undefined);
 });
