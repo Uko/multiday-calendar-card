@@ -183,6 +183,25 @@ function eventPlacementForDay(event, day, startHour, endHour) {
     };
 }
 
+const CALENDAR_VISUAL_LAYOUT = {
+    /** Narrow but sufficient for localized hour labels; prevents a large blank left gutter. */
+    axisWidthPx: 40,
+    /** Keeps labels clear of the timeline border, matching the graph-card convention. */
+    axisLabelGapPx: 10,
+    /** Preserve the usual compact card inset on the label side. */
+    paddingLeftPx: 12,
+    /** Give the timeline the more generous graph-like trailing inset. */
+    paddingRightPx: 32,
+    /** HA's readable small-text scale (14 px at the default root size). */
+    textSizeRem: 0.875};
+/**
+ * Keep the time labels within the axis for either 12- or 24-hour locales while
+ * preserving the intended clear gap before the timeline border.
+ */
+function timeAxisWidthPx(maxLabelWidthPx) {
+    return Math.max(CALENDAR_VISUAL_LAYOUT.axisWidthPx, Math.ceil(maxLabelWidthPx + CALENDAR_VISUAL_LAYOUT.axisLabelGapPx));
+}
+
 const DEFAULT_CONFIG = {
     days: 2,
     start_hour: 6,
@@ -373,11 +392,20 @@ class MultiDayCalendarCard extends HTMLElement {
             return day;
         });
         const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...days.map((day) => this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
-        const timeLabels = Array.from({ length: hourCount + 1 }, (_, index) => {
+        const timeLabelValues = Array.from({ length: hourCount + 1 }, (_, index) => {
             const time = new Date(range.start);
             time.setHours(config.start_hour + index, 0, 0, 0);
+            return timeFormatter.format(time);
+        });
+        const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+        const context = document.createElement('canvas').getContext('2d');
+        const labelFontSize = rootFontSize * CALENDAR_VISUAL_LAYOUT.textSizeRem;
+        if (context)
+            context.font = `${labelFontSize}px ${getComputedStyle(this).fontFamily}`;
+        const measuredTimeAxisWidth = timeAxisWidthPx(Math.max(...timeLabelValues.map((label) => context?.measureText(label).width ?? 0)));
+        const timeLabels = timeLabelValues.map((label, index) => {
             const top = fixedHeight ? `${(index / hourCount) * 100}%` : `${index * 56}px`;
-            return `<div class="time-label" style="top: ${top}">${escapeHtml(timeFormatter.format(time))}</div>`;
+            return `<div class="time-label" style="top: ${top}">${escapeHtml(label)}</div>`;
         }).join('');
         const dayColumns = days
             .map((day) => {
@@ -473,18 +501,18 @@ class MultiDayCalendarCard extends HTMLElement {
         const style = document.createElement('style');
         style.textContent = `
       ha-card { display: block; }
-      .wrapper { padding: 12px; overflow-x: auto; }
+      .wrapper { padding: ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px ${CALENDAR_VISUAL_LAYOUT.paddingRightPx}px 12px ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px; overflow-x: auto; }
       .wrapper.fixed-height { box-sizing: border-box; height: calc(100% - 56px); display: flex; flex-direction: column; }
       .wrapper.fixed-height.titleless { height: 100%; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
-      .schedule { display: grid; grid-template-columns: 64px minmax(0, 1fr); min-width: 460px; }
+      .schedule { display: grid; grid-template-columns: ${measuredTimeAxisWidth}px minmax(0, 1fr); min-width: 460px; }
       .schedule.fixed-height { flex: 1; min-height: 0; }
-      .time-axis { position: relative; color: var(--secondary-text-color); font-size: 0.75rem; }
+      .time-axis { position: relative; color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; }
       .time-axis.fixed-height { height: 100%; }
-      .time-axis-spacer { height: var(--day-header-height); border-bottom: 1px solid var(--divider-color); }
+      .time-axis-spacer { height: var(--day-header-height); border-bottom: ${'none'}; }
       .time-labels { position: relative; height: calc(100% - var(--day-header-height)); }
-      .time-label { position: absolute; right: 8px; transform: translateY(-50%); white-space: nowrap; }
+      .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
       .day-columns { display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.fixed-height { height: 100%; }
@@ -494,15 +522,15 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-name { height: 37px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
       .day-header.today .day-name { color: var(--primary-color); }
       .all-day-events { display: grid; grid-auto-rows: 18px; gap: 4px; padding: 0 4px 4px; min-height: 0; }
-      .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 16px; }
+      .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 16px; }
       .timeline { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--slot-height) - 1px), var(--divider-color) calc(var(--slot-height) - 1px), var(--divider-color) var(--slot-height)); }
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--divider-color) 0); background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
-      .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: 0.75rem; line-height: 1.2; z-index: 1; }
+      .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 1.2; z-index: 1; }
       .event-overflow { border-left-style: dashed; font-style: italic; }
       .event-summary { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .event-calendar { color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--error-color); z-index: 2; pointer-events: none; }
-      @media (max-width: 600px) { .wrapper { padding: 8px; } .schedule { min-width: 380px; grid-template-columns: 52px minmax(0, 1fr); } .time-label { right: 5px; font-size: 0.68rem; } .event-calendar { display: none; } }
+      @media (max-width: 600px) { .wrapper { padding: 8px; } .schedule { min-width: 380px; } .time-label { right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; font-size: 0.75rem; } .event-calendar { display: none; } }
     `;
         style.setAttribute('data-multiday-calendar-card', '');
         this.appendChild(style);
