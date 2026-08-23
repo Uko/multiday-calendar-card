@@ -202,6 +202,226 @@ function timeAxisWidthPx(maxLabelWidthPx) {
     return Math.max(CALENDAR_VISUAL_LAYOUT.axisWidthPx, Math.ceil(maxLabelWidthPx + CALENDAR_VISUAL_LAYOUT.axisLabelGapPx));
 }
 
+const GRID_INTERVALS = [15, 20, 30, 60, 120];
+function normalizeEditorConfig(config) {
+    return {
+        ...config,
+        calendars: (config.calendars ?? []).map((calendar) => ({ ...calendar })),
+    };
+}
+function validateEditorConfig(config) {
+    const errors = [];
+    const calendars = config.calendars ?? [];
+    if (calendars.length === 0)
+        errors.push('Add at least one calendar source.');
+    if (calendars.some((calendar) => !calendar.entity?.startsWith('calendar.'))) {
+        errors.push('Every calendar source needs a calendar.* entity.');
+    }
+    if (config.days !== undefined && (!Number.isInteger(config.days) || config.days < 1 || config.days > 7)) {
+        errors.push('Days displayed must be a whole number from 1 to 7.');
+    }
+    if (config.start_hour !== undefined && config.end_hour !== undefined && config.start_hour >= config.end_hour) {
+        errors.push('Start hour must be before end hour.');
+    }
+    if (config.slot_minutes !== undefined && !GRID_INTERVALS.includes(config.slot_minutes)) {
+        errors.push('Grid interval must be 15, 20, 30, 60, or 120 minutes.');
+    }
+    if (config.height !== undefined && config.height !== null && (!Number.isFinite(config.height) || config.height <= 0)) {
+        errors.push('Fixed height must be a positive number of pixels.');
+    }
+    if (config.max_simultaneous_events !== undefined && (!Number.isInteger(config.max_simultaneous_events) || config.max_simultaneous_events < 1)) {
+        errors.push('Maximum simultaneous events must be a positive whole number.');
+    }
+    return errors;
+}
+function editorWarnings(config) {
+    const calendars = config.calendars ?? [];
+    const labels = calendars.map((calendar) => calendar.label?.trim()).filter((label) => Boolean(label));
+    const colors = calendars.map((calendar) => calendar.color?.toLowerCase()).filter((color) => Boolean(color));
+    const warnings = [];
+    for (const [values, property] of [[labels, 'label'], [colors, 'color']]) {
+        const duplicate = values.find((value, index) => values.indexOf(value) !== index);
+        if (duplicate)
+            warnings.push(`Two or more calendar sources use the ${property} ${property === 'label' ? `“${duplicate}”` : duplicate}.`);
+    }
+    return warnings;
+}
+
+const CARD_TYPE = 'custom:multiday-calendar-card';
+function escapeHtml$1(value) {
+    return value.replace(/[&<>'"]/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
+    })[character] ?? character);
+}
+function numberValue(value) {
+    if (value.trim() === '')
+        return undefined;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
+}
+class MultidayCalendarCardEditor extends HTMLElement {
+    constructor() {
+        super(...arguments);
+        this._config = { type: CARD_TYPE, calendars: [] };
+    }
+    connectedCallback() {
+        void this.loadEntityPicker();
+    }
+    async loadEntityPicker() {
+        if (customElements.get('ha-entity-picker'))
+            return;
+        const entitiesCard = customElements.get('hui-entities-card');
+        if (!entitiesCard?.getConfigElement)
+            return;
+        try {
+            await entitiesCard.getConfigElement();
+            this.render();
+        }
+        catch {
+            // The fallback remains an empty picker until Home Assistant provides the element.
+        }
+    }
+    setConfig(config) {
+        this._config = normalizeEditorConfig({ ...config, type: CARD_TYPE });
+        this.render();
+    }
+    set hass(hass) {
+        this._hass = hass;
+        this.assignHassToEntityPickers();
+    }
+    updateConfig(update, rerender = false) {
+        this._config = normalizeEditorConfig({ ...this._config, ...update });
+        this.updateValidation();
+        if (validateEditorConfig(this._config).length === 0) {
+            this.dispatchEvent(new CustomEvent('config-changed', {
+                bubbles: true,
+                composed: true,
+                detail: { config: this._config },
+            }));
+        }
+        if (rerender)
+            this.render();
+    }
+    setCalendar(index, update) {
+        const calendars = (this._config.calendars ?? []).map((calendar, row) => row === index ? { ...calendar, ...update } : calendar);
+        this.updateConfig({ calendars });
+    }
+    assignHassToEntityPickers() {
+        this.querySelectorAll('ha-entity-picker').forEach((picker) => {
+            picker.hass = this._hass;
+            picker.includeDomains = ['calendar'];
+            picker.value = picker.getAttribute('value') ?? '';
+        });
+    }
+    updateValidation() {
+        const errors = validateEditorConfig(this._config);
+        const warnings = editorWarnings(this._config);
+        const validation = this.querySelector('.validation');
+        if (!validation)
+            return;
+        validation.innerHTML = [
+            ...errors.map((message) => `<div class="error">${escapeHtml$1(message)}</div>`),
+            ...warnings.map((message) => `<div class="warning">${escapeHtml$1(message)}</div>`),
+        ].join('');
+    }
+    render() {
+        const config = this._config;
+        const calendars = config.calendars ?? [];
+        const fixedHeight = config.height !== undefined && config.height !== null;
+        const startHour = config.start_hour ?? 6;
+        const endHour = config.end_hour ?? 22;
+        this.innerHTML = `
+      <style>
+        :host { display: block; }
+        .section { border-top: 1px solid var(--divider-color); padding: 12px 0; }
+        .section:first-child { border-top: 0; padding-top: 0; }
+        h3 { margin: 0 0 10px; font-size: 1rem; }
+        .field, .calendar-row { display: grid; gap: 6px; margin: 8px 0; }
+        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .calendar-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 96px auto; align-items: end; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
+        label { font-size: 0.875rem; color: var(--secondary-text-color); }
+        input, select { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px; border: 1px solid var(--divider-color); border-radius: 4px; color: var(--primary-text-color); background: var(--card-background-color); font: inherit; }
+        ha-entity-picker { display: block; min-width: 0; }
+        button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--primary-color); border-radius: 4px; color: var(--primary-color); background: transparent; font: inherit; cursor: pointer; }
+        button.remove { border-color: var(--error-color); color: var(--error-color); }
+        .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
+        .toggle input { width: auto; min-height: auto; }
+        .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
+        .error { color: var(--error-color); margin: 4px 0; }
+        .warning { color: var(--warning-color, #b26a00); margin: 4px 0; }
+        @media (max-width: 600px) { .grid, .calendar-row { grid-template-columns: 1fr; } }
+      </style>
+      <section class="section">
+        <h3>Calendar sources</h3>
+        <div class="calendar-list">${calendars.map((calendar, index) => `
+          <div class="calendar-row" data-calendar-index="${index}">
+            <div class="field"><label>Calendar entity</label><ha-entity-picker data-field="entity" value="${escapeHtml$1(calendar.entity ?? '')}"></ha-entity-picker></div>
+            <div class="field"><label>Display label (optional)</label><input data-field="label" value="${escapeHtml$1(calendar.label ?? '')}" placeholder="Calendar name"></div>
+            <div class="field"><label>Event color</label><input data-field="color" value="${escapeHtml$1(calendar.color ?? '')}" placeholder="#4caf50" pattern="^#[0-9a-fA-F]{6}$"></div>
+            <button class="remove" data-action="remove-calendar" type="button" aria-label="Remove calendar source">Remove</button>
+          </div>`).join('')}</div>
+        <button data-action="add-calendar" type="button">Add calendar</button>
+        <div class="hint">Sources may intentionally share a label or color; the editor only warns when they do.</div>
+      </section>
+      <section class="section">
+        <h3>View & schedule</h3>
+        <div class="field"><label>Card title</label><input data-config="title" value="${escapeHtml$1(config.title ?? '')}" placeholder="Calendar"></div>
+        <label class="toggle"><input type="checkbox" data-action="hide-title" ${config.title === undefined ? 'checked' : ''}> Hide card title</label>
+        <div class="grid">
+          <div class="field"><label>Days displayed</label><input data-config="days" type="number" min="1" max="7" step="1" value="${config.days ?? 2}"></div>
+          <div class="field"><label>Grid interval</label><select data-config="slot_minutes">${GRID_INTERVALS.map((minutes) => `<option value="${minutes}" ${config.slot_minutes === minutes || (config.slot_minutes === undefined && minutes === 30) ? 'selected' : ''}>${minutes === 120 ? '2 hours' : `${minutes} minutes`}</option>`).join('')}</select></div>
+          <div class="field"><label>Visible start hour</label><select data-config="start_hour">${Array.from({ length: 24 }, (_, hour) => `<option value="${hour}" ${startHour === hour ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
+          <div class="field"><label>Visible end hour</label><select data-config="end_hour">${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${hour}" ${endHour === hour ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
+        </div>
+        <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
+      </section>
+      <section class="section">
+        <h3>Layout & density</h3>
+        <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
+        <div class="field fixed-height-field" ${fixedHeight ? '' : 'hidden'}><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}"><div class="hint">A fixed height compresses the timeline; it does not hide events.</div></div>
+        <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
+      </section>
+      <div class="validation" role="alert"></div>
+    `;
+        this.bindEvents();
+        this.assignHassToEntityPickers();
+        this.updateValidation();
+    }
+    bindEvents() {
+        this.querySelector('[data-action="add-calendar"]')?.addEventListener('click', () => {
+            this.updateConfig({ calendars: [...(this._config.calendars ?? []), { entity: '' }] }, true);
+        });
+        this.querySelectorAll('[data-action="remove-calendar"]').forEach((button) => button.addEventListener('click', () => {
+            const index = Number(button.closest('[data-calendar-index]')?.dataset.calendarIndex);
+            this.updateConfig({ calendars: (this._config.calendars ?? []).filter((_, row) => row !== index) }, true);
+        }));
+        this.querySelector('[data-action="hide-title"]')?.addEventListener('change', (event) => {
+            const hidden = event.target.checked;
+            this.updateConfig(hidden ? { title: undefined } : { title: '' }, true);
+        });
+        this.querySelector('[data-action="fixed-height"]')?.addEventListener('change', (event) => {
+            const fixed = event.target.checked;
+            this.updateConfig({ height: fixed ? 480 : null }, true);
+        });
+        this.querySelectorAll('[data-config]').forEach((field) => field.addEventListener('change', () => {
+            const key = field.dataset.config;
+            const value = field.type === 'checkbox' ? field.checked :
+                field.type === 'number' ? numberValue(field.value) : field.value;
+            this.updateConfig({ [key]: value });
+        }));
+        this.querySelectorAll('[data-calendar-index]').forEach((row) => {
+            const index = Number(row.dataset.calendarIndex);
+            row.querySelector('ha-entity-picker')?.addEventListener('value-changed', (event) => {
+                this.setCalendar(index, { entity: event.detail.value ?? '' });
+            });
+            row.querySelectorAll('input[data-field]').forEach((field) => field.addEventListener('change', () => {
+                this.setCalendar(index, { [field.dataset.field]: field.value.trim() || undefined });
+            }));
+        });
+    }
+}
+customElements.define('multiday-calendar-card-editor', MultidayCalendarCardEditor);
+
 const DEFAULT_CONFIG = {
     days: 2,
     start_hour: 6,
@@ -246,6 +466,21 @@ class MultiDayCalendarCard extends HTMLElement {
             }
         };
     }
+    static getConfigElement() {
+        return document.createElement('multiday-calendar-card-editor');
+    }
+    static getStubConfig() {
+        return {
+            type: 'custom:multiday-calendar-card',
+            calendars: [],
+            days: 2,
+            start_hour: 6,
+            end_hour: 22,
+            slot_minutes: 30,
+            show_now_line: true,
+            max_simultaneous_events: 3,
+        };
+    }
     setConfig(config) {
         if (!config?.type) {
             throw new Error('Card config requires a type');
@@ -260,8 +495,8 @@ class MultiDayCalendarCard extends HTMLElement {
             throw new Error('days must be a whole number from 1 to 7');
         }
         const slotMinutes = Number(config.slot_minutes ?? DEFAULT_CONFIG.slot_minutes);
-        if (!Number.isInteger(slotMinutes) || slotMinutes < 15 || slotMinutes > 60 || 60 % slotMinutes !== 0) {
-            throw new Error('slot_minutes must divide one hour and be from 15 to 60');
+        if (!Number.isInteger(slotMinutes) || ![15, 20, 30, 60, 120].includes(slotMinutes)) {
+            throw new Error('slot_minutes must be 15, 20, 30, 60, or 120');
         }
         const refreshInterval = Number(config.refresh_interval ?? DEFAULT_CONFIG.refresh_interval);
         refreshIntervalMs(refreshInterval);

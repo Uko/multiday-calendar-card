@@ -58,6 +58,16 @@ npm run check
 npm run build
 ```
 
+## Visual configuration editor
+
+Home Assistant's card editor exposes the everyday configuration in three sections:
+
+- **Calendar sources:** add and remove `calendar.*` entities, optional display labels, and optional event colors. Sources are allowed to share labels or colors; the editor gives a non-blocking warning to make that choice visible.
+- **View & schedule:** title (or no title), 1–7 days, visible whole-hour range, current-time line, and a 15, 20, 30, 60 minute, or **2 hour** grid interval.
+- **Layout & density:** automatic or fixed pixel height and the maximum simultaneous timed-event lanes.
+
+The editor deliberately leaves operational and less-common behavior—such as `refresh_interval`—to YAML for now. Existing and future YAML keys are retained when the editor is opened and saved.
+
 ## Proposed Lovelace usage
 
 ```yaml

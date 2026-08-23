@@ -13,6 +13,7 @@ import {
   type CalendarApiEvent,
 } from './calendar-model';
 import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
+import './multiday-calendar-card-editor';
 
 export {};
 
@@ -99,6 +100,23 @@ function sameLocalDay(left: Date, right: Date): boolean {
 }
 
 class MultiDayCalendarCard extends HTMLElement {
+  static getConfigElement(): HTMLElement {
+    return document.createElement('multiday-calendar-card-editor');
+  }
+
+  static getStubConfig(): MultiDayCalendarCardConfig {
+    return {
+      type: 'custom:multiday-calendar-card',
+      calendars: [],
+      days: 2,
+      start_hour: 6,
+      end_hour: 22,
+      slot_minutes: 30,
+      show_now_line: true,
+      max_simultaneous_events: 3,
+    };
+  }
+
   private _config?: Required<
     Omit<MultiDayCalendarCardConfig, 'type' | 'title'>
   > &
@@ -128,8 +146,8 @@ class MultiDayCalendarCard extends HTMLElement {
     }
 
     const slotMinutes = Number(config.slot_minutes ?? DEFAULT_CONFIG.slot_minutes);
-    if (!Number.isInteger(slotMinutes) || slotMinutes < 15 || slotMinutes > 60 || 60 % slotMinutes !== 0) {
-      throw new Error('slot_minutes must divide one hour and be from 15 to 60');
+    if (!Number.isInteger(slotMinutes) || ![15, 20, 30, 60, 120].includes(slotMinutes)) {
+      throw new Error('slot_minutes must be 15, 20, 30, 60, or 120');
     }
 
     const refreshInterval = Number(config.refresh_interval ?? DEFAULT_CONFIG.refresh_interval);
