@@ -1,5 +1,6 @@
 {
   "name": "Multiday Calendar Card",
   "render_readme": true,
-  "filename": "dist/multiday-calendar-card.js"
+  "filename": "dist/multiday-calendar-card.js",
+  "type": "dashboard"
 }
