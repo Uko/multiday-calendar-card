@@ -126,6 +126,8 @@ function buildCalendarEventsPath(entityId, start, end) {
 }
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 30;
 const VISIBILITY_REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
+const CALENDAR_FETCH_RECOVERY_DELAY_MS = 60 * 1000;
+const MAX_CALENDAR_FETCH_RECOVERY_ATTEMPTS = 2;
 function refreshIntervalMs(intervalMinutes) {
     const minutes = intervalMinutes ?? DEFAULT_REFRESH_INTERVAL_MINUTES;
     if (!Number.isFinite(minutes) || minutes <= 0) {
@@ -135,6 +137,10 @@ function refreshIntervalMs(intervalMinutes) {
 }
 function shouldRefreshAfterVisibility(nowMs, lastUpdateMs) {
     return nowMs - lastUpdateMs > VISIBILITY_REFRESH_THRESHOLD_MS;
+}
+/** Limit short recovery retries so an unavailable HA API does not create a retry loop. */
+function shouldRetryCalendarFetch(failedAttempts) {
+    return failedAttempts < MAX_CALENDAR_FETCH_RECOVERY_ATTEMPTS;
 }
 const DEFAULT_PIXELS_PER_HOUR = 56;
 function timelineGeometry(visibleHours, slotMinutes, fixedTimelineHeightPx) {
@@ -458,6 +464,7 @@ class MultiDayCalendarCard extends HTMLElement {
         super(...arguments);
         this._events = [];
         this._loading = false;
+        this._failedFetchAttempts = 0;
         this._lastEventsUpdateMs = 0;
         this.handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' &&
@@ -525,6 +532,8 @@ class MultiDayCalendarCard extends HTMLElement {
             calendars,
         };
         this._requestKey = undefined;
+        this.cancelRecoveryRefresh();
+        this._failedFetchAttempts = 0;
         this.render();
         void this.loadEvents();
         if (this.isConnected)
@@ -533,7 +542,7 @@ class MultiDayCalendarCard extends HTMLElement {
     set hass(hass) {
         this._hass = hass;
         this.render();
-        void this.loadEvents();
+        void this.loadEvents(this._error !== undefined);
     }
     getCardSize() {
         return 8;
@@ -549,6 +558,7 @@ class MultiDayCalendarCard extends HTMLElement {
             clearTimeout(this._refreshTimerId);
             this._refreshTimerId = undefined;
         }
+        this.cancelRecoveryRefresh();
         document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
     startRefreshTimer() {
@@ -560,6 +570,23 @@ class MultiDayCalendarCard extends HTMLElement {
             void this.loadEvents(true);
             this.startRefreshTimer();
         }, refreshIntervalMs(this._config.refresh_interval));
+    }
+    cancelRecoveryRefresh() {
+        if (this._recoveryTimerId !== undefined) {
+            clearTimeout(this._recoveryTimerId);
+            this._recoveryTimerId = undefined;
+        }
+    }
+    scheduleRecoveryRefresh() {
+        if (!shouldRetryCalendarFetch(this._failedFetchAttempts))
+            return;
+        this._failedFetchAttempts += 1;
+        this.cancelRecoveryRefresh();
+        this._recoveryTimerId = window.setTimeout(() => {
+            this._recoveryTimerId = undefined;
+            if (this.isConnected)
+                void this.loadEvents(true);
+        }, CALENDAR_FETCH_RECOVERY_DELAY_MS);
     }
     async loadEvents(force = false) {
         if (!this._config || !this._hass)
@@ -585,12 +612,15 @@ class MultiDayCalendarCard extends HTMLElement {
                 return;
             this._events = eventGroups.flatMap(({ calendar, events }) => events.map((event) => ({ calendar, event })));
             this._lastEventsUpdateMs = Date.now();
+            this._failedFetchAttempts = 0;
+            this.cancelRecoveryRefresh();
         }
         catch (error) {
             if (this._requestKey !== key)
                 return;
             this._events = [];
             this._error = error instanceof Error ? error.message : 'Unable to load calendar events';
+            this.scheduleRecoveryRefresh();
         }
         finally {
             if (this._requestKey === key) {

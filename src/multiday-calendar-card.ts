@@ -2,12 +2,14 @@ import {
   averageEventColors,
   allDayEventPlacementForDay,
   buildCalendarEventsPath,
+  CALENDAR_FETCH_RECOVERY_DELAY_MS,
   calendarHeaderHeight,
   displayTitle,
   eventPlacementForDay,
   eventRangeForDays,
   layoutTimedEventLanes,
   refreshIntervalMs,
+  shouldRetryCalendarFetch,
   shouldRefreshAfterVisibility,
   timelineGeometry,
   type CalendarApiEvent,
@@ -127,6 +129,8 @@ class MultiDayCalendarCard extends HTMLElement {
   private _error?: string;
   private _requestKey?: string;
   private _refreshTimerId?: number;
+  private _recoveryTimerId?: number;
+  private _failedFetchAttempts = 0;
   private _lastEventsUpdateMs = 0;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
@@ -183,6 +187,8 @@ class MultiDayCalendarCard extends HTMLElement {
       calendars,
     };
     this._requestKey = undefined;
+    this.cancelRecoveryRefresh();
+    this._failedFetchAttempts = 0;
     this.render();
     void this.loadEvents();
     if (this.isConnected) this.startRefreshTimer();
@@ -191,7 +197,7 @@ class MultiDayCalendarCard extends HTMLElement {
   set hass(hass: HomeAssistantLike) {
     this._hass = hass;
     this.render();
-    void this.loadEvents();
+    void this.loadEvents(this._error !== undefined);
   }
 
   getCardSize(): number {
@@ -210,6 +216,7 @@ class MultiDayCalendarCard extends HTMLElement {
       clearTimeout(this._refreshTimerId);
       this._refreshTimerId = undefined;
     }
+    this.cancelRecoveryRefresh();
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
@@ -230,6 +237,24 @@ class MultiDayCalendarCard extends HTMLElement {
       void this.loadEvents(true);
       this.startRefreshTimer();
     }, refreshIntervalMs(this._config.refresh_interval));
+  }
+
+  private cancelRecoveryRefresh(): void {
+    if (this._recoveryTimerId !== undefined) {
+      clearTimeout(this._recoveryTimerId);
+      this._recoveryTimerId = undefined;
+    }
+  }
+
+  private scheduleRecoveryRefresh(): void {
+    if (!shouldRetryCalendarFetch(this._failedFetchAttempts)) return;
+
+    this._failedFetchAttempts += 1;
+    this.cancelRecoveryRefresh();
+    this._recoveryTimerId = window.setTimeout(() => {
+      this._recoveryTimerId = undefined;
+      if (this.isConnected) void this.loadEvents(true);
+    }, CALENDAR_FETCH_RECOVERY_DELAY_MS);
   }
 
   private async loadEvents(force = false): Promise<void> {
@@ -264,10 +289,13 @@ class MultiDayCalendarCard extends HTMLElement {
         events.map((event) => ({ calendar, event })),
       );
       this._lastEventsUpdateMs = Date.now();
+      this._failedFetchAttempts = 0;
+      this.cancelRecoveryRefresh();
     } catch (error) {
       if (this._requestKey !== key) return;
       this._events = [];
       this._error = error instanceof Error ? error.message : 'Unable to load calendar events';
+      this.scheduleRecoveryRefresh();
     } finally {
       if (this._requestKey === key) {
         this._loading = false;

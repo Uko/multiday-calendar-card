@@ -10,9 +10,11 @@ import {
   eventRangeForDays,
   refreshIntervalMs,
   shouldRefreshAfterVisibility,
+  shouldRetryCalendarFetch,
   timelineGeometry,
   layoutTimedEventLanes,
   averageEventColors,
+  CALENDAR_FETCH_RECOVERY_DELAY_MS,
 } from '../src/calendar-model';
 
 test('buildCalendarEventsPath encodes the calendar entity and date range', () => {
@@ -162,6 +164,13 @@ test('refreshIntervalMs rejects non-positive and non-finite intervals', () => {
 test('shouldRefreshAfterVisibility waits five minutes before refetching a visible card', () => {
   assert.equal(shouldRefreshAfterVisibility(300_000, 0), false);
   assert.equal(shouldRefreshAfterVisibility(300_001, 0), true);
+});
+
+test('calendar fetch recovery retries twice at one-minute intervals before returning to normal refreshes', () => {
+  assert.equal(CALENDAR_FETCH_RECOVERY_DELAY_MS, 60_000);
+  assert.equal(shouldRetryCalendarFetch(0), true);
+  assert.equal(shouldRetryCalendarFetch(1), true);
+  assert.equal(shouldRetryCalendarFetch(2), false);
 });
 
 test('timelineGeometry preserves the current 56 pixels-per-hour layout without a height limit', () => {

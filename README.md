@@ -66,7 +66,7 @@ Home Assistant's card editor exposes the everyday configuration in three section
 - **View & schedule:** title (or no title), 1–7 days, visible whole-hour range, current-time line, and a 15, 20, 30, 60 minute, or **2 hour** grid interval.
 - **Layout & density:** automatic or fixed pixel height and the maximum simultaneous timed-event lanes.
 
-The editor deliberately leaves operational and less-common behavior—such as `refresh_interval`—to YAML for now. Existing and future YAML keys are retained when the editor is opened and saved.
+The editor deliberately leaves operational and less-common behavior—such as `refresh_interval`—to YAML for now. Existing and future YAML keys are retained when the editor is opened and saved. Calendar API failures automatically receive up to two recovery refreshes, each one minute apart, before the normal refresh cadence resumes. A successful Home Assistant frontend update while the card is showing an error also triggers an immediate retry.
 
 ## Proposed Lovelace usage
 

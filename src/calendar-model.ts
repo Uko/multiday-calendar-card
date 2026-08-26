@@ -199,6 +199,8 @@ export function buildCalendarEventsPath(
 
 export const DEFAULT_REFRESH_INTERVAL_MINUTES = 30;
 export const VISIBILITY_REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
+export const CALENDAR_FETCH_RECOVERY_DELAY_MS = 60 * 1000;
+export const MAX_CALENDAR_FETCH_RECOVERY_ATTEMPTS = 2;
 
 export function refreshIntervalMs(intervalMinutes: number | undefined): number {
   const minutes = intervalMinutes ?? DEFAULT_REFRESH_INTERVAL_MINUTES;
@@ -210,6 +212,11 @@ export function refreshIntervalMs(intervalMinutes: number | undefined): number {
 
 export function shouldRefreshAfterVisibility(nowMs: number, lastUpdateMs: number): boolean {
   return nowMs - lastUpdateMs > VISIBILITY_REFRESH_THRESHOLD_MS;
+}
+
+/** Limit short recovery retries so an unavailable HA API does not create a retry loop. */
+export function shouldRetryCalendarFetch(failedAttempts: number): boolean {
+  return failedAttempts < MAX_CALENDAR_FETCH_RECOVERY_ATTEMPTS;
 }
 
 export type TimelineGeometry = {
