@@ -120,7 +120,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         .field, .calendar-row { display: grid; gap: 6px; margin: 8px 0; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .calendar-row { grid-template-columns: minmax(0, 1fr) 56px; align-items: stretch; column-gap: 16px; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
-        .remove-field { display: grid; grid-template-rows: auto minmax(38px, 1fr); gap: 6px; }
+        .remove-field { display: grid; grid-template-rows: auto 56px; gap: 6px; align-self: start; }
         .remove-label { min-height: 1.2em; font-size: 0.875rem; line-height: normal; }
         .calendar-details { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 0.4fr); column-gap: 32px; }
         .color-control { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; }
@@ -129,8 +129,8 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         input, select { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px; border: 1px solid var(--divider-color); border-radius: 4px; color: var(--primary-text-color); background: var(--card-background-color); font: inherit; }
         ha-entity-picker { display: block; min-width: 0; }
         button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--primary-color); border-radius: 4px; color: var(--primary-color); background: transparent; font: inherit; cursor: pointer; }
-        button.remove { box-sizing: border-box; width: 56px; height: 100%; min-height: 0; padding: 0; border-color: var(--error-color); color: var(--error-color); display: grid; place-items: center; }
-        button.remove svg { width: 28px; height: 28px; fill: currentColor; }
+        button.remove { box-sizing: border-box; width: 56px; height: 56px; min-height: 56px; padding: 0; border-color: var(--error-color); color: var(--error-color); display: grid; place-items: center; }
+        button.remove svg { width: 24px; height: 24px; fill: currentColor; }
         .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
         .toggle input { width: auto; min-height: auto; }
         .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
