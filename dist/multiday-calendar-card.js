@@ -363,7 +363,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
         .field, .calendar-row { display: grid; gap: 6px; margin: 8px 0; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .calendar-row { grid-template-columns: minmax(0, 1fr) 56px; align-items: stretch; column-gap: 16px; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
-        .remove-field { display: grid; grid-template-rows: auto 56px; gap: 6px; align-self: start; }
+        .remove-field { display: grid; grid-template-rows: auto 56px; gap: 6px; align-self: start; margin: 8px 0; }
         .remove-label { min-height: 1.2em; font-size: 0.875rem; line-height: normal; }
         .calendar-details { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 0.4fr); column-gap: 32px; }
         .color-control { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; }
