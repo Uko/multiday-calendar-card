@@ -1,7 +1,9 @@
 import {
+  formatTime,
   GRID_INTERVALS,
   editorWarnings,
   normalizeEditorConfig,
+  parseTime,
   validateEditorConfig,
   type CalendarEditorConfig,
   type EditorConfig,
@@ -106,8 +108,9 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     const config = this._config;
     const calendars = config.calendars ?? [];
     const fixedHeight = config.height !== undefined && config.height !== null;
-    const startHour = config.start_hour ?? 6;
-    const endHour = config.end_hour ?? 22;
+    const startTime = config.start_time ?? '06:00';
+    const endTime = config.end_time ?? '22:00';
+
     this.innerHTML = `
       <style>
         :host { display: block; }
@@ -116,7 +119,10 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         h3 { margin: 0 0 10px; font-size: 1rem; }
         .field, .calendar-row { display: grid; gap: 6px; margin: 8px 0; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-        .calendar-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 96px auto; align-items: end; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
+        .calendar-row { grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 12px; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
+        .calendar-details { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 0.4fr); gap: 12px; }
+        .color-control { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: center; }
+        .color-control input[type="color"] { min-height: 38px; padding: 2px; cursor: pointer; }
         label { font-size: 0.875rem; color: var(--secondary-text-color); }
         input, select { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px; border: 1px solid var(--divider-color); border-radius: 4px; color: var(--primary-text-color); background: var(--card-background-color); font: inherit; }
         ha-entity-picker { display: block; min-width: 0; }
@@ -127,16 +133,18 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
         .error { color: var(--error-color); margin: 4px 0; }
         .warning { color: var(--warning-color, #b26a00); margin: 4px 0; }
-        @media (max-width: 600px) { .grid, .calendar-row { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) { .grid, .calendar-row, .calendar-details { grid-template-columns: 1fr; } .calendar-details { grid-column: auto; } }
       </style>
       <section class="section">
         <h3>Calendar sources</h3>
         <div class="calendar-list">${calendars.map((calendar, index) => `
           <div class="calendar-row" data-calendar-index="${index}">
             <div class="field"><label>Calendar entity</label><ha-entity-picker data-field="entity" value="${escapeHtml(calendar.entity ?? '')}"></ha-entity-picker></div>
-            <div class="field"><label>Display label (optional)</label><input data-field="label" value="${escapeHtml(calendar.label ?? '')}" placeholder="Calendar name"></div>
-            <div class="field"><label>Event color</label><input data-field="color" value="${escapeHtml(calendar.color ?? '')}" placeholder="#4caf50" pattern="^#[0-9a-fA-F]{6}$"></div>
             <button class="remove" data-action="remove-calendar" type="button" aria-label="Remove calendar source">Remove</button>
+            <div class="calendar-details">
+              <div class="field"><label>Display label (optional)</label><input data-field="label" value="${escapeHtml(calendar.label ?? '')}" placeholder="Calendar name"></div>
+              <div class="field"><label>Event color</label><div class="color-control"><input data-action="pick-color" type="color" value="${/^#[0-9a-f]{6}$/i.test(calendar.color ?? '') ? calendar.color : '#4caf50'}" aria-label="Choose event color"><input data-field="color" value="${escapeHtml(calendar.color ?? '')}" placeholder="#4caf50" pattern="^#[0-9a-fA-F]{6}$"></div></div>
+            </div>
           </div>`).join('')}</div>
         <button data-action="add-calendar" type="button">Add calendar</button>
         <div class="hint">Sources may intentionally share a label or color; the editor only warns when they do.</div>
@@ -148,16 +156,16 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         <div class="grid">
           <div class="field"><label>Days displayed</label><input data-config="days" type="number" min="1" max="7" step="1" value="${config.days ?? 2}"></div>
           <div class="field"><label>Grid interval</label><select data-config="slot_minutes">${GRID_INTERVALS.map((minutes) => `<option value="${minutes}" ${config.slot_minutes === minutes || (config.slot_minutes === undefined && minutes === 30) ? 'selected' : ''}>${minutes === 120 ? '2 hours' : `${minutes} minutes`}</option>`).join('')}</select></div>
-          <div class="field"><label>Visible start hour</label><select data-config="start_hour">${Array.from({ length: 24 }, (_, hour) => `<option value="${hour}" ${startHour === hour ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
-          <div class="field"><label>Visible end hour</label><select data-config="end_hour">${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${hour}" ${endHour === hour ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
+          <div class="field"><label>Start time</label><select data-config="start_time">${parseTime(startTime)! % 60 !== 0 ? `<option value="${startTime}" selected>${startTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${startTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
+          <div class="field"><label>End time</label><select data-config="end_time">${parseTime(endTime)! % 60 !== 0 ? `<option value="${endTime}" selected>${endTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${endTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
         </div>
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
+        <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <section class="section">
         <h3>Layout & density</h3>
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
         <div class="field fixed-height-field" ${fixedHeight ? '' : 'hidden'}><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}"><div class="hint">A fixed height compresses the timeline; it does not hide events.</div></div>
-        <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <div class="validation" role="alert"></div>
     `;
@@ -185,7 +193,9 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     this.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-config]').forEach((field) => field.addEventListener('change', () => {
       const key = field.dataset.config as keyof EditorConfig;
       const value = field.type === 'checkbox' ? (field as HTMLInputElement).checked :
-        field.type === 'number' ? numberValue(field.value) : field.value;
+        field.type === 'number' || ['days', 'slot_minutes', 'max_simultaneous_events'].includes(key as string)
+          ? numberValue(field.value)
+          : field.value;
       this.updateConfig({ [key]: value });
     }));
     this.querySelectorAll<HTMLElement>('[data-calendar-index]').forEach((row) => {
@@ -196,6 +206,12 @@ export class MultidayCalendarCardEditor extends HTMLElement {
       row.querySelectorAll<HTMLInputElement>('input[data-field]').forEach((field) => field.addEventListener('change', () => {
         this.setCalendar(index, { [field.dataset.field!]: field.value.trim() || undefined });
       }));
+      row.querySelector<HTMLInputElement>('[data-action="pick-color"]')?.addEventListener('input', (event) => {
+        const color = (event.target as HTMLInputElement).value;
+        const textField = row.querySelector<HTMLInputElement>('input[data-field="color"]');
+        if (textField) textField.value = color;
+        this.setCalendar(index, { color });
+      });
     });
   }
 }

@@ -15,6 +15,7 @@ import {
   type CalendarApiEvent,
 } from './calendar-model';
 import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
+import { formatTime, parseTime } from './editor-model';
 import './multiday-calendar-card-editor';
 
 export {};
@@ -35,7 +36,11 @@ type MultiDayCalendarCardConfig = {
   title?: string;
   days?: number;
   calendars?: CalendarConfig[];
+  start_time?: string;
+  end_time?: string;
+  /** @deprecated Read for backwards compatibility; the editor saves start_time. */
   start_hour?: number;
+  /** @deprecated Read for backwards compatibility; the editor saves end_time. */
   end_hour?: number;
   slot_minutes?: number;
   /** Minutes between calendar API refreshes. */
@@ -63,11 +68,11 @@ declare global {
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<MultiDayCalendarCardConfig, 'type' | 'title'>
+  Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_hour' | 'end_hour'>
 > = {
   days: 2,
-  start_hour: 6,
-  end_hour: 22,
+  start_time: '06:00',
+  end_time: '22:00',
   slot_minutes: 30,
   refresh_interval: 30,
   height: null,
@@ -111,8 +116,8 @@ class MultiDayCalendarCard extends HTMLElement {
       type: 'custom:multiday-calendar-card',
       calendars: [],
       days: 2,
-      start_hour: 6,
-      end_hour: 22,
+      start_time: '06:00',
+      end_time: '22:00',
       slot_minutes: 30,
       show_now_line: true,
       max_simultaneous_events: 3,
@@ -120,7 +125,7 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   private _config?: Required<
-    Omit<MultiDayCalendarCardConfig, 'type' | 'title'>
+    Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_hour' | 'end_hour'>
   > &
     Pick<MultiDayCalendarCardConfig, 'type' | 'title'>;
   private _hass?: HomeAssistantLike;
@@ -138,10 +143,12 @@ class MultiDayCalendarCard extends HTMLElement {
       throw new Error('Card config requires a type');
     }
 
-    const startHour = Number(config.start_hour ?? DEFAULT_CONFIG.start_hour);
-    const endHour = Number(config.end_hour ?? DEFAULT_CONFIG.end_hour);
-    if (!Number.isInteger(startHour) || !Number.isInteger(endHour) || startHour < 0 || endHour > 24 || startHour >= endHour) {
-      throw new Error('start_hour and end_hour must be whole hours from 0 to 24, with start_hour before end_hour');
+    const startTime = config.start_time ?? formatTime(Number(config.start_hour ?? 6) * 60);
+    const endTime = config.end_time ?? formatTime(Number(config.end_hour ?? 22) * 60);
+    const startMinutes = parseTime(startTime);
+    const endMinutes = parseTime(endTime);
+    if (startMinutes === undefined || endMinutes === undefined || startMinutes >= endMinutes) {
+      throw new Error('start_time and end_time must use HH:mm values from 00:00 through 24:00, with start_time before end_time');
     }
 
     const days = Number(config.days ?? DEFAULT_CONFIG.days);
@@ -178,8 +185,8 @@ class MultiDayCalendarCard extends HTMLElement {
       ...DEFAULT_CONFIG,
       ...config,
       days,
-      start_hour: startHour,
-      end_hour: endHour,
+      start_time: startTime,
+      end_time: endTime,
       slot_minutes: slotMinutes,
       refresh_interval: refreshInterval,
       max_simultaneous_events: maxSimultaneousEvents,
@@ -311,9 +318,11 @@ class MultiDayCalendarCard extends HTMLElement {
     const now = new Date();
     const range = eventRangeForDays(now, config.days);
     const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
-    const hourCount = config.end_hour - config.start_hour;
-    const minutesVisible = hourCount * 60;
-    const geometry = timelineGeometry(hourCount, config.slot_minutes);
+    const startMinutes = parseTime(config.start_time)!;
+    const endMinutes = parseTime(config.end_time)!;
+    const minutesVisible = endMinutes - startMinutes;
+    const visibleHours = minutesVisible / 60;
+    const geometry = timelineGeometry(visibleHours, config.slot_minutes);
     const timelineHeight = geometry.timelineHeightPx;
     const slotHeight = geometry.slotHeightPx;
     const fixedHeight = config.height !== null;
@@ -341,11 +350,23 @@ class MultiDayCalendarCard extends HTMLElement {
       ),
     );
 
-    const timeLabelValues = Array.from({ length: hourCount + 1 }, (_, index) => {
+    const timeLabelMinutes = [
+      startMinutes,
+      ...Array.from({ length: 24 }, (_, hour) => hour * 60).filter((minutes) => minutes > startMinutes && minutes < endMinutes),
+      endMinutes,
+    ];
+    const timeLabelValues = timeLabelMinutes.map((minutes) => {
       const time = new Date(range.start);
-      time.setHours(config.start_hour + index, 0, 0, 0);
+      time.setMinutes(minutes, 0, 0);
       return timeFormatter.format(time);
     });
+    const gridLines = Array.from(
+      { length: Math.floor((endMinutes - Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes) / config.slot_minutes) + 1 },
+      (_, index) => Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes + index * config.slot_minutes,
+    )
+      .filter((minutes) => minutes > startMinutes && minutes < endMinutes)
+      .map((minutes) => `<div class="grid-line" style="top: ${((minutes - startMinutes) / minutesVisible) * 100}%"></div>`)
+      .join('');
     const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
     const context = document.createElement('canvas').getContext('2d');
     const labelFontSize = rootFontSize * CALENDAR_VISUAL_LAYOUT.textSizeRem;
@@ -354,7 +375,7 @@ class MultiDayCalendarCard extends HTMLElement {
       Math.max(...timeLabelValues.map((label) => context?.measureText(label).width ?? 0)),
     );
     const timeLabels = timeLabelValues.map((label, index) => {
-      const top = fixedHeight ? `${(index / hourCount) * 100}%` : `${index * 56}px`;
+      const top = `${((timeLabelMinutes[index] - startMinutes) / minutesVisible) * 100}%`;
       return `<div class="time-label" style="top: ${top}">${escapeHtml(label)}</div>`;
     }).join('');
 
@@ -381,8 +402,8 @@ class MultiDayCalendarCard extends HTMLElement {
             placement: eventPlacementForDay(
               event,
               day,
-              config.start_hour,
-              config.end_hour,
+              startMinutes,
+              endMinutes,
             ),
           }))
           .filter(
@@ -397,8 +418,8 @@ class MultiDayCalendarCard extends HTMLElement {
           })),
           config.max_simultaneous_events,
         );
-        const eventStyle = (startMinutes: number, durationMinutes: number, lane: number, laneCount: number): string => {
-          const top = ((startMinutes - config.start_hour * 60) / minutesVisible) * 100;
+        const eventStyle = (eventStartMinutes: number, durationMinutes: number, lane: number, laneCount: number): string => {
+          const top = ((eventStartMinutes - startMinutes) / minutesVisible) * 100;
           const height = (durationMinutes / minutesVisible) * 100;
           const laneWidth = 100 / laneCount;
           return `top: ${top}%; height: ${height}%; left: calc(${lane * laneWidth}% + 4px); width: calc(${laneWidth}% - 8px)`;
@@ -424,8 +445,8 @@ class MultiDayCalendarCard extends HTMLElement {
           .join('');
         const isToday = sameLocalDay(day, now);
         const nowLine =
-          config.show_now_line && isToday && now.getHours() >= config.start_hour && now.getHours() < config.end_hour
-            ? `<div class="now-line" style="top: ${((now.getHours() * 60 + now.getMinutes() - config.start_hour * 60) / minutesVisible) * 100}%"></div>`
+          config.show_now_line && isToday && now.getHours() * 60 + now.getMinutes() >= startMinutes && now.getHours() * 60 + now.getMinutes() < endMinutes
+            ? `<div class="now-line" style="top: ${((now.getHours() * 60 + now.getMinutes() - startMinutes) / minutesVisible) * 100}%"></div>`
             : '';
         return `<section class="day-column">
           <header class="day-header${isToday ? ' today' : ''}" style="--day-header-height: ${dayHeaderHeight}px">
@@ -433,7 +454,7 @@ class MultiDayCalendarCard extends HTMLElement {
             ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
           </header>
           <div class="timeline" style="${fixedHeight ? '' : `height: ${timelineHeight}px;`} --slot-height: ${slotHeight}px; --slot-count: ${geometry.slotCount}">
-            ${events}${overflowEvents}${nowLine}
+            ${gridLines}${events}${overflowEvents}${nowLine}
           </div>
         </section>`;
       })
@@ -492,8 +513,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-header.today .day-name { color: var(--primary-color); }
       .all-day-events { display: grid; grid-auto-rows: 18px; gap: 4px; padding: 0 4px 4px; min-height: 0; }
       .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 16px; }
-      .timeline { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--slot-height) - 1px), var(--divider-color) calc(var(--slot-height) - 1px), var(--divider-color) var(--slot-height)); }
-      .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--divider-color) 0); background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
+      .timeline { position: relative; }
+      .day-columns.fixed-height .timeline { flex: 1; min-height: 0; }
+      .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
       .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 1.2; z-index: 1; }
       .event-overflow { border-left-style: dashed; font-style: italic; }
       .event-summary { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

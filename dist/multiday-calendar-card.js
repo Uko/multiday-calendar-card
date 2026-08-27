@@ -160,7 +160,7 @@ function displayTitle(title) {
     const trimmed = title?.trim();
     return trimmed || undefined;
 }
-function eventPlacementForDay(event, day, startHour, endHour) {
+function eventPlacementForDay(event, day, visibleStartMinutes, visibleEndMinutes) {
     if (!event.start.dateTime || !event.end.dateTime) {
         return undefined;
     }
@@ -174,9 +174,9 @@ function eventPlacementForDay(event, day, startHour, endHour) {
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
     const visibleStart = new Date(dayStart);
-    visibleStart.setHours(startHour, 0, 0, 0);
+    visibleStart.setMinutes(visibleStartMinutes, 0, 0);
     const visibleEnd = new Date(dayStart);
-    visibleEnd.setHours(endHour, 0, 0, 0);
+    visibleEnd.setMinutes(visibleEndMinutes, 0, 0);
     const clippedStart = new Date(Math.max(start.getTime(), visibleStart.getTime()));
     const clippedEnd = new Date(Math.min(end.getTime(), visibleEnd.getTime(), dayEnd.getTime()));
     if (clippedEnd <= clippedStart) {
@@ -209,9 +209,28 @@ function timeAxisWidthPx(maxLabelWidthPx) {
 }
 
 const GRID_INTERVALS = [15, 20, 30, 60, 120];
+function parseTime(value) {
+    if (value === undefined)
+        return undefined;
+    const match = /^(?:([01]\d|2[0-3]):([0-5]\d)|(24):00)$/.exec(value);
+    if (!match)
+        return undefined;
+    return match[3] ? 24 * 60 : Number(match[1]) * 60 + Number(match[2]);
+}
+function formatTime(minutes) {
+    const hours = Math.floor(minutes / 60);
+    return `${String(hours).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
 function normalizeEditorConfig(config) {
+    const { start_hour, end_hour, ...withoutLegacyHours } = config;
     return {
-        ...config,
+        ...withoutLegacyHours,
+        ...(config.start_time === undefined && start_hour !== undefined
+            ? { start_time: formatTime(start_hour * 60) }
+            : {}),
+        ...(config.end_time === undefined && end_hour !== undefined
+            ? { end_time: formatTime(end_hour * 60) }
+            : {}),
         calendars: (config.calendars ?? []).map((calendar) => ({ ...calendar })),
     };
 }
@@ -226,8 +245,14 @@ function validateEditorConfig(config) {
     if (config.days !== undefined && (!Number.isInteger(config.days) || config.days < 1 || config.days > 7)) {
         errors.push('Days displayed must be a whole number from 1 to 7.');
     }
-    if (config.start_hour !== undefined && config.end_hour !== undefined && config.start_hour >= config.end_hour) {
-        errors.push('Start hour must be before end hour.');
+    const startMinutes = parseTime(config.start_time);
+    const endMinutes = parseTime(config.end_time);
+    if ((config.start_time !== undefined && startMinutes === undefined) ||
+        (config.end_time !== undefined && endMinutes === undefined)) {
+        errors.push('Start time and end time must use the HH:mm format.');
+    }
+    else if (startMinutes !== undefined && endMinutes !== undefined && startMinutes >= endMinutes) {
+        errors.push('Start time must be before end time.');
     }
     if (config.slot_minutes !== undefined && !GRID_INTERVALS.includes(config.slot_minutes)) {
         errors.push('Grid interval must be 15, 20, 30, 60, or 120 minutes.');
@@ -334,8 +359,8 @@ class MultidayCalendarCardEditor extends HTMLElement {
         const config = this._config;
         const calendars = config.calendars ?? [];
         const fixedHeight = config.height !== undefined && config.height !== null;
-        const startHour = config.start_hour ?? 6;
-        const endHour = config.end_hour ?? 22;
+        const startTime = config.start_time ?? '06:00';
+        const endTime = config.end_time ?? '22:00';
         this.innerHTML = `
       <style>
         :host { display: block; }
@@ -344,7 +369,10 @@ class MultidayCalendarCardEditor extends HTMLElement {
         h3 { margin: 0 0 10px; font-size: 1rem; }
         .field, .calendar-row { display: grid; gap: 6px; margin: 8px 0; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-        .calendar-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 96px auto; align-items: end; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
+        .calendar-row { grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 12px; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
+        .calendar-details { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 0.4fr); gap: 12px; }
+        .color-control { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: center; }
+        .color-control input[type="color"] { min-height: 38px; padding: 2px; cursor: pointer; }
         label { font-size: 0.875rem; color: var(--secondary-text-color); }
         input, select { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px; border: 1px solid var(--divider-color); border-radius: 4px; color: var(--primary-text-color); background: var(--card-background-color); font: inherit; }
         ha-entity-picker { display: block; min-width: 0; }
@@ -355,16 +383,18 @@ class MultidayCalendarCardEditor extends HTMLElement {
         .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
         .error { color: var(--error-color); margin: 4px 0; }
         .warning { color: var(--warning-color, #b26a00); margin: 4px 0; }
-        @media (max-width: 600px) { .grid, .calendar-row { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) { .grid, .calendar-row, .calendar-details { grid-template-columns: 1fr; } .calendar-details { grid-column: auto; } }
       </style>
       <section class="section">
         <h3>Calendar sources</h3>
         <div class="calendar-list">${calendars.map((calendar, index) => `
           <div class="calendar-row" data-calendar-index="${index}">
             <div class="field"><label>Calendar entity</label><ha-entity-picker data-field="entity" value="${escapeHtml$1(calendar.entity ?? '')}"></ha-entity-picker></div>
-            <div class="field"><label>Display label (optional)</label><input data-field="label" value="${escapeHtml$1(calendar.label ?? '')}" placeholder="Calendar name"></div>
-            <div class="field"><label>Event color</label><input data-field="color" value="${escapeHtml$1(calendar.color ?? '')}" placeholder="#4caf50" pattern="^#[0-9a-fA-F]{6}$"></div>
             <button class="remove" data-action="remove-calendar" type="button" aria-label="Remove calendar source">Remove</button>
+            <div class="calendar-details">
+              <div class="field"><label>Display label (optional)</label><input data-field="label" value="${escapeHtml$1(calendar.label ?? '')}" placeholder="Calendar name"></div>
+              <div class="field"><label>Event color</label><div class="color-control"><input data-action="pick-color" type="color" value="${/^#[0-9a-f]{6}$/i.test(calendar.color ?? '') ? calendar.color : '#4caf50'}" aria-label="Choose event color"><input data-field="color" value="${escapeHtml$1(calendar.color ?? '')}" placeholder="#4caf50" pattern="^#[0-9a-fA-F]{6}$"></div></div>
+            </div>
           </div>`).join('')}</div>
         <button data-action="add-calendar" type="button">Add calendar</button>
         <div class="hint">Sources may intentionally share a label or color; the editor only warns when they do.</div>
@@ -376,16 +406,16 @@ class MultidayCalendarCardEditor extends HTMLElement {
         <div class="grid">
           <div class="field"><label>Days displayed</label><input data-config="days" type="number" min="1" max="7" step="1" value="${config.days ?? 2}"></div>
           <div class="field"><label>Grid interval</label><select data-config="slot_minutes">${GRID_INTERVALS.map((minutes) => `<option value="${minutes}" ${config.slot_minutes === minutes || (config.slot_minutes === undefined && minutes === 30) ? 'selected' : ''}>${minutes === 120 ? '2 hours' : `${minutes} minutes`}</option>`).join('')}</select></div>
-          <div class="field"><label>Visible start hour</label><select data-config="start_hour">${Array.from({ length: 24 }, (_, hour) => `<option value="${hour}" ${startHour === hour ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
-          <div class="field"><label>Visible end hour</label><select data-config="end_hour">${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${hour}" ${endHour === hour ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
+          <div class="field"><label>Start time</label><select data-config="start_time">${parseTime(startTime) % 60 !== 0 ? `<option value="${startTime}" selected>${startTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${startTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
+          <div class="field"><label>End time</label><select data-config="end_time">${parseTime(endTime) % 60 !== 0 ? `<option value="${endTime}" selected>${endTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${endTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
         </div>
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
+        <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <section class="section">
         <h3>Layout & density</h3>
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
         <div class="field fixed-height-field" ${fixedHeight ? '' : 'hidden'}><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}"><div class="hint">A fixed height compresses the timeline; it does not hide events.</div></div>
-        <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <div class="validation" role="alert"></div>
     `;
@@ -412,7 +442,9 @@ class MultidayCalendarCardEditor extends HTMLElement {
         this.querySelectorAll('[data-config]').forEach((field) => field.addEventListener('change', () => {
             const key = field.dataset.config;
             const value = field.type === 'checkbox' ? field.checked :
-                field.type === 'number' ? numberValue(field.value) : field.value;
+                field.type === 'number' || ['days', 'slot_minutes', 'max_simultaneous_events'].includes(key)
+                    ? numberValue(field.value)
+                    : field.value;
             this.updateConfig({ [key]: value });
         }));
         this.querySelectorAll('[data-calendar-index]').forEach((row) => {
@@ -423,6 +455,13 @@ class MultidayCalendarCardEditor extends HTMLElement {
             row.querySelectorAll('input[data-field]').forEach((field) => field.addEventListener('change', () => {
                 this.setCalendar(index, { [field.dataset.field]: field.value.trim() || undefined });
             }));
+            row.querySelector('[data-action="pick-color"]')?.addEventListener('input', (event) => {
+                const color = event.target.value;
+                const textField = row.querySelector('input[data-field="color"]');
+                if (textField)
+                    textField.value = color;
+                this.setCalendar(index, { color });
+            });
         });
     }
 }
@@ -430,8 +469,8 @@ customElements.define('multiday-calendar-card-editor', MultidayCalendarCardEdito
 
 const DEFAULT_CONFIG = {
     days: 2,
-    start_hour: 6,
-    end_hour: 22,
+    start_time: '06:00',
+    end_time: '22:00',
     slot_minutes: 30,
     refresh_interval: 30,
     height: null,
@@ -481,8 +520,8 @@ class MultiDayCalendarCard extends HTMLElement {
             type: 'custom:multiday-calendar-card',
             calendars: [],
             days: 2,
-            start_hour: 6,
-            end_hour: 22,
+            start_time: '06:00',
+            end_time: '22:00',
             slot_minutes: 30,
             show_now_line: true,
             max_simultaneous_events: 3,
@@ -492,10 +531,12 @@ class MultiDayCalendarCard extends HTMLElement {
         if (!config?.type) {
             throw new Error('Card config requires a type');
         }
-        const startHour = Number(config.start_hour ?? DEFAULT_CONFIG.start_hour);
-        const endHour = Number(config.end_hour ?? DEFAULT_CONFIG.end_hour);
-        if (!Number.isInteger(startHour) || !Number.isInteger(endHour) || startHour < 0 || endHour > 24 || startHour >= endHour) {
-            throw new Error('start_hour and end_hour must be whole hours from 0 to 24, with start_hour before end_hour');
+        const startTime = config.start_time ?? formatTime(Number(config.start_hour ?? 6) * 60);
+        const endTime = config.end_time ?? formatTime(Number(config.end_hour ?? 22) * 60);
+        const startMinutes = parseTime(startTime);
+        const endMinutes = parseTime(endTime);
+        if (startMinutes === undefined || endMinutes === undefined || startMinutes >= endMinutes) {
+            throw new Error('start_time and end_time must use HH:mm values from 00:00 through 24:00, with start_time before end_time');
         }
         const days = Number(config.days ?? DEFAULT_CONFIG.days);
         if (!Number.isInteger(days) || days < 1 || days > 7) {
@@ -523,8 +564,8 @@ class MultiDayCalendarCard extends HTMLElement {
             ...DEFAULT_CONFIG,
             ...config,
             days,
-            start_hour: startHour,
-            end_hour: endHour,
+            start_time: startTime,
+            end_time: endTime,
             slot_minutes: slotMinutes,
             refresh_interval: refreshInterval,
             max_simultaneous_events: maxSimultaneousEvents,
@@ -636,9 +677,11 @@ class MultiDayCalendarCard extends HTMLElement {
         const now = new Date();
         const range = eventRangeForDays(now, config.days);
         const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
-        const hourCount = config.end_hour - config.start_hour;
-        const minutesVisible = hourCount * 60;
-        const geometry = timelineGeometry(hourCount, config.slot_minutes);
+        const startMinutes = parseTime(config.start_time);
+        const endMinutes = parseTime(config.end_time);
+        const minutesVisible = endMinutes - startMinutes;
+        const visibleHours = minutesVisible / 60;
+        const geometry = timelineGeometry(visibleHours, config.slot_minutes);
         const timelineHeight = geometry.timelineHeightPx;
         const slotHeight = geometry.slotHeightPx;
         const fixedHeight = config.height !== null;
@@ -657,11 +700,20 @@ class MultiDayCalendarCard extends HTMLElement {
             return day;
         });
         const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...days.map((day) => this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
-        const timeLabelValues = Array.from({ length: hourCount + 1 }, (_, index) => {
+        const timeLabelMinutes = [
+            startMinutes,
+            ...Array.from({ length: 24 }, (_, hour) => hour * 60).filter((minutes) => minutes > startMinutes && minutes < endMinutes),
+            endMinutes,
+        ];
+        const timeLabelValues = timeLabelMinutes.map((minutes) => {
             const time = new Date(range.start);
-            time.setHours(config.start_hour + index, 0, 0, 0);
+            time.setMinutes(minutes, 0, 0);
             return timeFormatter.format(time);
         });
+        const gridLines = Array.from({ length: Math.floor((endMinutes - Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes) / config.slot_minutes) + 1 }, (_, index) => Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes + index * config.slot_minutes)
+            .filter((minutes) => minutes > startMinutes && minutes < endMinutes)
+            .map((minutes) => `<div class="grid-line" style="top: ${((minutes - startMinutes) / minutesVisible) * 100}%"></div>`)
+            .join('');
         const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
         const context = document.createElement('canvas').getContext('2d');
         const labelFontSize = rootFontSize * CALENDAR_VISUAL_LAYOUT.textSizeRem;
@@ -669,7 +721,7 @@ class MultiDayCalendarCard extends HTMLElement {
             context.font = `${labelFontSize}px ${getComputedStyle(this).fontFamily}`;
         const measuredTimeAxisWidth = timeAxisWidthPx(Math.max(...timeLabelValues.map((label) => context?.measureText(label).width ?? 0)));
         const timeLabels = timeLabelValues.map((label, index) => {
-            const top = fixedHeight ? `${(index / hourCount) * 100}%` : `${index * 56}px`;
+            const top = `${((timeLabelMinutes[index] - startMinutes) / minutesVisible) * 100}%`;
             return `<div class="time-label" style="top: ${top}">${escapeHtml(label)}</div>`;
         }).join('');
         const dayColumns = days
@@ -689,7 +741,7 @@ class MultiDayCalendarCard extends HTMLElement {
             const placements = this._events
                 .map(({ calendar, event }) => ({
                 calendar,
-                placement: eventPlacementForDay(event, day, config.start_hour, config.end_hour),
+                placement: eventPlacementForDay(event, day, startMinutes, endMinutes),
             }))
                 .filter((item) => item.placement !== undefined);
             const laneLayout = layoutTimedEventLanes(placements.map(({ calendar, placement }) => ({
@@ -697,8 +749,8 @@ class MultiDayCalendarCard extends HTMLElement {
                 startMinutes: placement.startMinutes,
                 durationMinutes: placement.durationMinutes,
             })), config.max_simultaneous_events);
-            const eventStyle = (startMinutes, durationMinutes, lane, laneCount) => {
-                const top = ((startMinutes - config.start_hour * 60) / minutesVisible) * 100;
+            const eventStyle = (eventStartMinutes, durationMinutes, lane, laneCount) => {
+                const top = ((eventStartMinutes - startMinutes) / minutesVisible) * 100;
                 const height = (durationMinutes / minutesVisible) * 100;
                 const laneWidth = 100 / laneCount;
                 return `top: ${top}%; height: ${height}%; left: calc(${lane * laneWidth}% + 4px); width: calc(${laneWidth}% - 8px)`;
@@ -723,8 +775,8 @@ class MultiDayCalendarCard extends HTMLElement {
             })
                 .join('');
             const isToday = sameLocalDay(day, now);
-            const nowLine = config.show_now_line && isToday && now.getHours() >= config.start_hour && now.getHours() < config.end_hour
-                ? `<div class="now-line" style="top: ${((now.getHours() * 60 + now.getMinutes() - config.start_hour * 60) / minutesVisible) * 100}%"></div>`
+            const nowLine = config.show_now_line && isToday && now.getHours() * 60 + now.getMinutes() >= startMinutes && now.getHours() * 60 + now.getMinutes() < endMinutes
+                ? `<div class="now-line" style="top: ${((now.getHours() * 60 + now.getMinutes() - startMinutes) / minutesVisible) * 100}%"></div>`
                 : '';
             return `<section class="day-column">
           <header class="day-header${isToday ? ' today' : ''}" style="--day-header-height: ${dayHeaderHeight}px">
@@ -732,7 +784,7 @@ class MultiDayCalendarCard extends HTMLElement {
             ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
           </header>
           <div class="timeline" style="${fixedHeight ? '' : `height: ${timelineHeight}px;`} --slot-height: ${slotHeight}px; --slot-count: ${geometry.slotCount}">
-            ${events}${overflowEvents}${nowLine}
+            ${gridLines}${events}${overflowEvents}${nowLine}
           </div>
         </section>`;
         })
@@ -788,8 +840,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-header.today .day-name { color: var(--primary-color); }
       .all-day-events { display: grid; grid-auto-rows: 18px; gap: 4px; padding: 0 4px 4px; min-height: 0; }
       .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 16px; }
-      .timeline { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--slot-height) - 1px), var(--divider-color) calc(var(--slot-height) - 1px), var(--divider-color) var(--slot-height)); }
-      .day-columns.fixed-height .timeline { flex: 1; min-height: 0; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--divider-color) 0); background-size: 100% calc(100% / var(--slot-count)); background-repeat: repeat-y; }
+      .timeline { position: relative; }
+      .day-columns.fixed-height .timeline { flex: 1; min-height: 0; }
+      .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
       .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 1.2; z-index: 1; }
       .event-overflow { border-left-style: dashed; font-style: italic; }
       .event-summary { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

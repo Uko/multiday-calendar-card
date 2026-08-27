@@ -10,7 +10,11 @@ export type EditorConfig = {
   title?: string;
   days?: number;
   calendars?: CalendarEditorConfig[];
+  start_time?: string;
+  end_time?: string;
+  /** @deprecated Kept only to migrate existing card YAML in the editor. */
   start_hour?: number;
+  /** @deprecated Kept only to migrate existing card YAML in the editor. */
   end_hour?: number;
   slot_minutes?: number;
   height?: number | null;
@@ -21,9 +25,28 @@ export type EditorConfig = {
 
 export const GRID_INTERVALS = [15, 20, 30, 60, 120] as const;
 
+export function parseTime(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const match = /^(?:([01]\d|2[0-3]):([0-5]\d)|(24):00)$/.exec(value);
+  if (!match) return undefined;
+  return match[3] ? 24 * 60 : Number(match[1]) * 60 + Number(match[2]);
+}
+
+export function formatTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  return `${String(hours).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
 export function normalizeEditorConfig(config: EditorConfig): EditorConfig {
+  const { start_hour, end_hour, ...withoutLegacyHours } = config;
   return {
-    ...config,
+    ...withoutLegacyHours,
+    ...(config.start_time === undefined && start_hour !== undefined
+      ? { start_time: formatTime(start_hour * 60) }
+      : {}),
+    ...(config.end_time === undefined && end_hour !== undefined
+      ? { end_time: formatTime(end_hour * 60) }
+      : {}),
     calendars: (config.calendars ?? []).map((calendar) => ({ ...calendar })),
   };
 }
@@ -40,8 +63,13 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   if (config.days !== undefined && (!Number.isInteger(config.days) || config.days < 1 || config.days > 7)) {
     errors.push('Days displayed must be a whole number from 1 to 7.');
   }
-  if (config.start_hour !== undefined && config.end_hour !== undefined && config.start_hour >= config.end_hour) {
-    errors.push('Start hour must be before end hour.');
+  const startMinutes = parseTime(config.start_time);
+  const endMinutes = parseTime(config.end_time);
+  if ((config.start_time !== undefined && startMinutes === undefined) ||
+      (config.end_time !== undefined && endMinutes === undefined)) {
+    errors.push('Start time and end time must use the HH:mm format.');
+  } else if (startMinutes !== undefined && endMinutes !== undefined && startMinutes >= endMinutes) {
+    errors.push('Start time must be before end time.');
   }
   if (config.slot_minutes !== undefined && !GRID_INTERVALS.includes(config.slot_minutes as typeof GRID_INTERVALS[number])) {
     errors.push('Grid interval must be 15, 20, 30, 60, or 120 minutes.');

@@ -255,8 +255,8 @@ export function displayTitle(title: string | undefined): string | undefined {
 export function eventPlacementForDay(
   event: CalendarApiEvent,
   day: Date,
-  startHour: number,
-  endHour: number,
+  visibleStartMinutes: number,
+  visibleEndMinutes: number,
 ): EventPlacement | undefined {
   if (!event.start.dateTime || !event.end.dateTime) {
     return undefined;
@@ -274,9 +274,9 @@ export function eventPlacementForDay(
   dayEnd.setDate(dayEnd.getDate() + 1);
 
   const visibleStart = new Date(dayStart);
-  visibleStart.setHours(startHour, 0, 0, 0);
+  visibleStart.setMinutes(visibleStartMinutes, 0, 0);
   const visibleEnd = new Date(dayStart);
-  visibleEnd.setHours(endHour, 0, 0, 0);
+  visibleEnd.setMinutes(visibleEndMinutes, 0, 0);
 
   const clippedStart = new Date(Math.max(start.getTime(), visibleStart.getTime()));
   const clippedEnd = new Date(

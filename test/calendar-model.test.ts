@@ -47,14 +47,33 @@ test('eventPlacementForDay clips an event to visible hours within one day', () =
       end: { dateTime: '2026-07-28T07:15:00.000Z' },
     },
     new Date('2026-07-28T00:00:00.000Z'),
-    6,
-    22,
+    360,
+    1320,
   );
 
   assert.deepEqual(placement, {
     summary: 'Planning',
     startMinutes: 360,
     durationMinutes: 75,
+  });
+});
+
+test('eventPlacementForDay clips events to minute-precise visible times', () => {
+  const placement = eventPlacementForDay(
+    {
+      summary: 'Planning',
+      start: { dateTime: '2026-07-28T06:00:00.000Z' },
+      end: { dateTime: '2026-07-28T07:00:00.000Z' },
+    },
+    new Date('2026-07-28T00:00:00.000Z'),
+    375,
+    405,
+  );
+
+  assert.deepEqual(placement, {
+    summary: 'Planning',
+    startMinutes: 375,
+    durationMinutes: 30,
   });
 });
 
