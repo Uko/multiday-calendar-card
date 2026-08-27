@@ -15,7 +15,7 @@ import {
   type CalendarApiEvent,
 } from './calendar-model';
 import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
-import { formatTime, parseTime } from './editor-model';
+import { parseTime } from './editor-model';
 import './multiday-calendar-card-editor';
 
 export {};
@@ -38,10 +38,6 @@ type MultiDayCalendarCardConfig = {
   calendars?: CalendarConfig[];
   start_time?: string;
   end_time?: string;
-  /** @deprecated Read for backwards compatibility; the editor saves start_time. */
-  start_hour?: number;
-  /** @deprecated Read for backwards compatibility; the editor saves end_time. */
-  end_hour?: number;
   slot_minutes?: number;
   /** Minutes between calendar API refreshes. */
   refresh_interval?: number;
@@ -68,7 +64,7 @@ declare global {
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_hour' | 'end_hour'>
+  Omit<MultiDayCalendarCardConfig, 'type' | 'title'>
 > = {
   days: 2,
   start_time: '06:00',
@@ -125,7 +121,7 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   private _config?: Required<
-    Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_hour' | 'end_hour'>
+    Omit<MultiDayCalendarCardConfig, 'type' | 'title'>
   > &
     Pick<MultiDayCalendarCardConfig, 'type' | 'title'>;
   private _hass?: HomeAssistantLike;
@@ -143,8 +139,8 @@ class MultiDayCalendarCard extends HTMLElement {
       throw new Error('Card config requires a type');
     }
 
-    const startTime = config.start_time ?? formatTime(Number(config.start_hour ?? 6) * 60);
-    const endTime = config.end_time ?? formatTime(Number(config.end_hour ?? 22) * 60);
+    const startTime = config.start_time ?? DEFAULT_CONFIG.start_time;
+    const endTime = config.end_time ?? DEFAULT_CONFIG.end_time;
     const startMinutes = parseTime(startTime);
     const endMinutes = parseTime(endTime);
     if (startMinutes === undefined || endMinutes === undefined || startMinutes >= endMinutes) {

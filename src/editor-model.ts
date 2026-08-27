@@ -12,10 +12,6 @@ export type EditorConfig = {
   calendars?: CalendarEditorConfig[];
   start_time?: string;
   end_time?: string;
-  /** @deprecated Kept only to migrate existing card YAML in the editor. */
-  start_hour?: number;
-  /** @deprecated Kept only to migrate existing card YAML in the editor. */
-  end_hour?: number;
   slot_minutes?: number;
   height?: number | null;
   show_now_line?: boolean;
@@ -38,15 +34,8 @@ export function formatTime(minutes: number): string {
 }
 
 export function normalizeEditorConfig(config: EditorConfig): EditorConfig {
-  const { start_hour, end_hour, ...withoutLegacyHours } = config;
   return {
-    ...withoutLegacyHours,
-    ...(config.start_time === undefined && start_hour !== undefined
-      ? { start_time: formatTime(start_hour * 60) }
-      : {}),
-    ...(config.end_time === undefined && end_hour !== undefined
-      ? { end_time: formatTime(end_hour * 60) }
-      : {}),
+    ...config,
     calendars: (config.calendars ?? []).map((calendar) => ({ ...calendar })),
   };
 }

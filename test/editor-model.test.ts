@@ -61,11 +61,11 @@ test('time helpers accept standard HH:mm values and preserve the 24:00 end-of-da
   assert.equal(formatTime(690), '11:30');
 });
 
-test('normalizeEditorConfig migrates legacy whole-hour keys to standard time strings', () => {
+test('normalizeEditorConfig retains standard time strings unchanged', () => {
   assert.deepEqual(normalizeEditorConfig({
     type: 'custom:multiday-calendar-card',
-    start_hour: 6,
-    end_hour: 22,
+    start_time: '06:00',
+    end_time: '22:00',
   }), {
     type: 'custom:multiday-calendar-card',
     start_time: '06:00',

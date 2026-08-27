@@ -222,15 +222,8 @@ function formatTime(minutes) {
     return `${String(hours).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 function normalizeEditorConfig(config) {
-    const { start_hour, end_hour, ...withoutLegacyHours } = config;
     return {
-        ...withoutLegacyHours,
-        ...(config.start_time === undefined && start_hour !== undefined
-            ? { start_time: formatTime(start_hour * 60) }
-            : {}),
-        ...(config.end_time === undefined && end_hour !== undefined
-            ? { end_time: formatTime(end_hour * 60) }
-            : {}),
+        ...config,
         calendars: (config.calendars ?? []).map((calendar) => ({ ...calendar })),
     };
 }
@@ -531,8 +524,8 @@ class MultiDayCalendarCard extends HTMLElement {
         if (!config?.type) {
             throw new Error('Card config requires a type');
         }
-        const startTime = config.start_time ?? formatTime(Number(config.start_hour ?? 6) * 60);
-        const endTime = config.end_time ?? formatTime(Number(config.end_hour ?? 22) * 60);
+        const startTime = config.start_time ?? DEFAULT_CONFIG.start_time;
+        const endTime = config.end_time ?? DEFAULT_CONFIG.end_time;
         const startMinutes = parseTime(startTime);
         const endMinutes = parseTime(endTime);
         if (startMinutes === undefined || endMinutes === undefined || startMinutes >= endMinutes) {
