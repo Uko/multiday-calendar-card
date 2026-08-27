@@ -119,15 +119,18 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         h3 { margin: 0 0 10px; font-size: 1rem; }
         .field, .calendar-row { display: grid; gap: 6px; margin: 8px 0; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-        .calendar-row { grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 12px; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
-        .calendar-details { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 0.4fr); gap: 12px; }
-        .color-control { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: center; }
+        .calendar-row { grid-template-columns: minmax(0, 1fr) 56px; align-items: stretch; column-gap: 16px; padding: 10px; border: 1px solid var(--divider-color); border-radius: 8px; }
+        .remove-field { display: grid; grid-template-rows: auto minmax(38px, 1fr); gap: 6px; }
+        .remove-label { min-height: 1.2em; font-size: 0.875rem; line-height: normal; }
+        .calendar-details { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 0.4fr); column-gap: 32px; }
+        .color-control { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; }
         .color-control input[type="color"] { min-height: 38px; padding: 2px; cursor: pointer; }
         label { font-size: 0.875rem; color: var(--secondary-text-color); }
         input, select { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px; border: 1px solid var(--divider-color); border-radius: 4px; color: var(--primary-text-color); background: var(--card-background-color); font: inherit; }
         ha-entity-picker { display: block; min-width: 0; }
         button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--primary-color); border-radius: 4px; color: var(--primary-color); background: transparent; font: inherit; cursor: pointer; }
-        button.remove { border-color: var(--error-color); color: var(--error-color); }
+        button.remove { box-sizing: border-box; width: 56px; height: 100%; min-height: 0; padding: 0; border-color: var(--error-color); color: var(--error-color); display: grid; place-items: center; }
+        button.remove svg { width: 28px; height: 28px; fill: currentColor; }
         .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
         .toggle input { width: auto; min-height: auto; }
         .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
@@ -140,7 +143,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         <div class="calendar-list">${calendars.map((calendar, index) => `
           <div class="calendar-row" data-calendar-index="${index}">
             <div class="field"><label>Calendar entity</label><ha-entity-picker data-field="entity" value="${escapeHtml(calendar.entity ?? '')}"></ha-entity-picker></div>
-            <button class="remove" data-action="remove-calendar" type="button" aria-label="Remove calendar source">Remove</button>
+            <div class="remove-field"><span class="remove-label" aria-hidden="true">&nbsp;</span><button class="remove" data-action="remove-calendar" type="button" aria-label="Remove calendar source" title="Remove calendar source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v1H4v2h1v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6h1V4h-5V3H9m0 5h2v11H9V8m4 0h2v11h-2V8Z"/></svg></button></div>
             <div class="calendar-details">
               <div class="field"><label>Display label (optional)</label><input data-field="label" value="${escapeHtml(calendar.label ?? '')}" placeholder="Calendar name"></div>
               <div class="field"><label>Event color</label><div class="color-control"><input data-action="pick-color" type="color" value="${/^#[0-9a-f]{6}$/i.test(calendar.color ?? '') ? calendar.color : '#4caf50'}" aria-label="Choose event color"><input data-field="color" value="${escapeHtml(calendar.color ?? '')}" placeholder="#4caf50" pattern="^#[0-9a-fA-F]{6}$"></div></div>
