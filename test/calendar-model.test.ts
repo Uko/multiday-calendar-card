@@ -201,8 +201,26 @@ test('timelineGeometry preserves the current 56 pixels-per-hour layout without a
   });
 });
 
+test('timelineGeometry uses a configured hour height when no fixed height is present', () => {
+  assert.deepEqual(timelineGeometry(16, 30, 72), {
+    fixedHeight: false,
+    timelineHeightPx: 1152,
+    slotHeightPx: 36,
+    slotCount: 32,
+  });
+});
+
+test('timelineGeometry uses fixed height in preference to configured hour height', () => {
+  assert.deepEqual(timelineGeometry(16, 30, 72, 400), {
+    fixedHeight: true,
+    timelineHeightPx: 400,
+    slotHeightPx: 12.5,
+    slotCount: 32,
+  });
+});
+
 test('timelineGeometry derives timeline geometry from a fixed available height', () => {
-  assert.deepEqual(timelineGeometry(16, 30, 400), {
+  assert.deepEqual(timelineGeometry(16, 30, 56, 400), {
     fixedHeight: true,
     timelineHeightPx: 400,
     slotHeightPx: 12.5,

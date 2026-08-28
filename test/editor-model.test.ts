@@ -85,6 +85,15 @@ test('validateEditorConfig accepts arbitrary minute bounds and rejects malformed
   ]);
 });
 
+test('validateEditorConfig validates hour height only when fixed packing is disabled', () => {
+  const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
+
+  assert.deepEqual(validateEditorConfig({ ...base, hour_height: 0 }), [
+    'Hour height must be a positive number of pixels.',
+  ]);
+  assert.deepEqual(validateEditorConfig({ ...base, height: 480, hour_height: 0 }), []);
+});
+
 test('validateEditorConfig rejects incomplete calendar and invalid view/density values', () => {
   assert.deepEqual(validateEditorConfig({
     type: 'custom:multiday-calendar-card',

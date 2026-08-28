@@ -41,8 +41,10 @@ type MultiDayCalendarCardConfig = {
   slot_minutes?: number;
   /** Minutes between calendar API refreshes. */
   refresh_interval?: number;
-  /** Fixed outer-card height in pixels. Omit for the legacy auto-height layout. */
+  /** Fixed outer-card height in pixels. When present, fixed packing takes precedence over hour_height. */
   height?: number | null;
+  /** Timeline height in pixels per visible hour when height is omitted. Defaults to 56. */
+  hour_height?: number;
   show_now_line?: boolean;
   /** Maximum concurrent timed-event lanes per overlap group. */
   max_simultaneous_events?: number;
@@ -72,6 +74,7 @@ const DEFAULT_CONFIG: Required<
   slot_minutes: 30,
   refresh_interval: 30,
   height: null,
+  hour_height: 56,
   show_now_line: true,
   max_simultaneous_events: 3,
   calendars: [],
@@ -172,6 +175,13 @@ class MultiDayCalendarCard extends HTMLElement {
       throw new Error('height must be a positive number of pixels when provided');
     }
 
+    const hourHeight = height === null
+      ? Number(config.hour_height ?? DEFAULT_CONFIG.hour_height)
+      : DEFAULT_CONFIG.hour_height;
+    if (height === null && (!Number.isFinite(hourHeight) || hourHeight <= 0)) {
+      throw new Error('hour_height must be a positive number of pixels when height is omitted');
+    }
+
     const calendars = config.calendars ?? [];
     if (!calendars.every((calendar) => calendar.entity.startsWith('calendar.'))) {
       throw new Error('Every calendars entry requires a calendar.* entity');
@@ -187,6 +197,7 @@ class MultiDayCalendarCard extends HTMLElement {
       refresh_interval: refreshInterval,
       max_simultaneous_events: maxSimultaneousEvents,
       height,
+      hour_height: hourHeight,
       calendars,
     };
     this._requestKey = undefined;
@@ -318,7 +329,7 @@ class MultiDayCalendarCard extends HTMLElement {
     const endMinutes = parseTime(config.end_time)!;
     const minutesVisible = endMinutes - startMinutes;
     const visibleHours = minutesVisible / 60;
-    const geometry = timelineGeometry(visibleHours, config.slot_minutes);
+    const geometry = timelineGeometry(visibleHours, config.slot_minutes, config.hour_height);
     const timelineHeight = geometry.timelineHeightPx;
     const slotHeight = geometry.slotHeightPx;
     const fixedHeight = config.height !== null;

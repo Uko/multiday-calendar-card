@@ -14,6 +14,7 @@ export type EditorConfig = {
   end_time?: string;
   slot_minutes?: number;
   height?: number | null;
+  hour_height?: number;
   show_now_line?: boolean;
   max_simultaneous_events?: number;
   [key: string]: unknown;
@@ -65,6 +66,10 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   }
   if (config.height !== undefined && config.height !== null && (!Number.isFinite(config.height) || config.height <= 0)) {
     errors.push('Fixed height must be a positive number of pixels.');
+  }
+  if ((config.height === undefined || config.height === null) && config.hour_height !== undefined &&
+      (!Number.isFinite(config.hour_height) || config.hour_height <= 0)) {
+    errors.push('Hour height must be a positive number of pixels.');
   }
   if (config.max_simultaneous_events !== undefined && (!Number.isInteger(config.max_simultaneous_events) || config.max_simultaneous_events < 1)) {
     errors.push('Maximum simultaneous events must be a positive whole number.');

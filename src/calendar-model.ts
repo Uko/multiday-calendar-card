@@ -226,17 +226,18 @@ export type TimelineGeometry = {
   slotCount: number;
 };
 
-const DEFAULT_PIXELS_PER_HOUR = 56;
+export const DEFAULT_PIXELS_PER_HOUR = 56;
 
 export function timelineGeometry(
   visibleHours: number,
   slotMinutes: number,
+  pixelsPerHour = DEFAULT_PIXELS_PER_HOUR,
   fixedTimelineHeightPx?: number,
 ): TimelineGeometry {
   const fixedHeight = fixedTimelineHeightPx !== undefined;
   const timelineHeightPx = fixedHeight
     ? fixedTimelineHeightPx
-    : visibleHours * DEFAULT_PIXELS_PER_HOUR;
+    : visibleHours * pixelsPerHour;
   const slotCount = (visibleHours * 60) / slotMinutes;
 
   return {

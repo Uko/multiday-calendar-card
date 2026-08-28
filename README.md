@@ -64,7 +64,7 @@ Home Assistant's card editor exposes the everyday configuration in three section
 
 - **Calendar sources:** add and remove `calendar.*` entities, optional display labels, and optional event colors. Sources are allowed to share labels or colors; the editor gives a non-blocking warning to make that choice visible.
 - **View & schedule:** title (or no title), 1–7 days, start/end times, current-time line, grid interval, and the maximum simultaneous timed-event cap. The editor offers whole-hour choices while YAML accepts any valid `HH:mm` time.
-- **Layout & density:** automatic or fixed pixel height.
+- **Layout & density:** automatic height with a configurable pixel height per hour, or fixed pixel height that packs the timeline into the available card body.
 
 The editor deliberately leaves operational and less-common behavior—such as `refresh_interval`—to YAML for now. Existing and future YAML keys are retained when the editor is opened and saved. Calendar API failures automatically receive up to two recovery refreshes, each one minute apart, before the normal refresh cadence resumes. A successful Home Assistant frontend update while the card is showing an error also triggers an immediate retry.
 
@@ -77,7 +77,9 @@ days: 2
 start_time: "06:00"
 end_time: "22:00"
 slot_minutes: 30
-# Optional fixed outer-card height in pixels. Omit to retain auto sizing.
+# Optional timeline height in pixels per visible hour; defaults to 56 when height is omitted.
+hour_height: 56
+# Optional fixed outer-card height in pixels. When present, it packs the timeline and overrides hour_height.
 height: 480
 show_now_line: true
 # Maximum parallel timed-event lanes in each overlapping group (default: 3).

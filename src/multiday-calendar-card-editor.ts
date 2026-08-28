@@ -168,7 +168,8 @@ export class MultidayCalendarCardEditor extends HTMLElement {
       <section class="section">
         <h3>Layout & density</h3>
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
-        <div class="field fixed-height-field" ${fixedHeight ? '' : 'hidden'}><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}"><div class="hint">A fixed height compresses the timeline; it does not hide events.</div></div>
+        <div class="field"><label>Hour height (pixels)</label><input data-config="hour_height" type="number" min="1" step="1" value="${config.hour_height ?? 56}" ${fixedHeight ? 'disabled' : ''}><div class="hint">Timeline height per visible hour. Defaults to 56 pixels when omitted.</div></div>
+        <div class="field fixed-height-field"><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}" ${fixedHeight ? '' : 'disabled'}><div class="hint">A fixed height compresses the timeline and overrides hour height; it does not hide events.</div></div>
       </section>
       <div class="validation" role="alert"></div>
     `;

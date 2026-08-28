@@ -143,11 +143,11 @@ function shouldRetryCalendarFetch(failedAttempts) {
     return failedAttempts < MAX_CALENDAR_FETCH_RECOVERY_ATTEMPTS;
 }
 const DEFAULT_PIXELS_PER_HOUR = 56;
-function timelineGeometry(visibleHours, slotMinutes, fixedTimelineHeightPx) {
+function timelineGeometry(visibleHours, slotMinutes, pixelsPerHour = DEFAULT_PIXELS_PER_HOUR, fixedTimelineHeightPx) {
     const fixedHeight = fixedTimelineHeightPx !== undefined;
     const timelineHeightPx = fixedHeight
         ? fixedTimelineHeightPx
-        : visibleHours * DEFAULT_PIXELS_PER_HOUR;
+        : visibleHours * pixelsPerHour;
     const slotCount = (visibleHours * 60) / slotMinutes;
     return {
         fixedHeight,
@@ -252,6 +252,10 @@ function validateEditorConfig(config) {
     }
     if (config.height !== undefined && config.height !== null && (!Number.isFinite(config.height) || config.height <= 0)) {
         errors.push('Fixed height must be a positive number of pixels.');
+    }
+    if ((config.height === undefined || config.height === null) && config.hour_height !== undefined &&
+        (!Number.isFinite(config.hour_height) || config.hour_height <= 0)) {
+        errors.push('Hour height must be a positive number of pixels.');
     }
     if (config.max_simultaneous_events !== undefined && (!Number.isInteger(config.max_simultaneous_events) || config.max_simultaneous_events < 1)) {
         errors.push('Maximum simultaneous events must be a positive whole number.');
@@ -411,7 +415,8 @@ class MultidayCalendarCardEditor extends HTMLElement {
       <section class="section">
         <h3>Layout & density</h3>
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
-        <div class="field fixed-height-field" ${fixedHeight ? '' : 'hidden'}><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}"><div class="hint">A fixed height compresses the timeline; it does not hide events.</div></div>
+        <div class="field"><label>Hour height (pixels)</label><input data-config="hour_height" type="number" min="1" step="1" value="${config.hour_height ?? 56}" ${fixedHeight ? 'disabled' : ''}><div class="hint">Timeline height per visible hour. Defaults to 56 pixels when omitted.</div></div>
+        <div class="field fixed-height-field"><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}" ${fixedHeight ? '' : 'disabled'}><div class="hint">A fixed height compresses the timeline and overrides hour height; it does not hide events.</div></div>
       </section>
       <div class="validation" role="alert"></div>
     `;
@@ -470,6 +475,7 @@ const DEFAULT_CONFIG = {
     slot_minutes: 30,
     refresh_interval: 30,
     height: null,
+    hour_height: 56,
     show_now_line: true,
     max_simultaneous_events: 3,
     calendars: [],
@@ -552,6 +558,12 @@ class MultiDayCalendarCard extends HTMLElement {
         if (height !== null && (!Number.isFinite(height) || height <= 0)) {
             throw new Error('height must be a positive number of pixels when provided');
         }
+        const hourHeight = height === null
+            ? Number(config.hour_height ?? DEFAULT_CONFIG.hour_height)
+            : DEFAULT_CONFIG.hour_height;
+        if (height === null && (!Number.isFinite(hourHeight) || hourHeight <= 0)) {
+            throw new Error('hour_height must be a positive number of pixels when height is omitted');
+        }
         const calendars = config.calendars ?? [];
         if (!calendars.every((calendar) => calendar.entity.startsWith('calendar.'))) {
             throw new Error('Every calendars entry requires a calendar.* entity');
@@ -566,6 +578,7 @@ class MultiDayCalendarCard extends HTMLElement {
             refresh_interval: refreshInterval,
             max_simultaneous_events: maxSimultaneousEvents,
             height,
+            hour_height: hourHeight,
             calendars,
         };
         this._requestKey = undefined;
@@ -677,7 +690,7 @@ class MultiDayCalendarCard extends HTMLElement {
         const endMinutes = parseTime(config.end_time);
         const minutesVisible = endMinutes - startMinutes;
         const visibleHours = minutesVisible / 60;
-        const geometry = timelineGeometry(visibleHours, config.slot_minutes);
+        const geometry = timelineGeometry(visibleHours, config.slot_minutes, config.hour_height);
         const timelineHeight = geometry.timelineHeightPx;
         const slotHeight = geometry.slotHeightPx;
         const fixedHeight = config.height !== null;
