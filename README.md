@@ -137,13 +137,6 @@ The Home Assistant card editor exposes the common options in three groups:
 
 Less-common operational settings, such as `refresh_interval`, remain available in YAML. The card refreshes calendar data every 30 minutes by default. If a calendar request fails, it performs up to two one-minute recovery retries before returning to the normal cadence.
 
-## Notes and limitations
-
-- The card is read-only: it displays events but does not create or edit them.
-- Calendar sources must be Home Assistant `calendar.*` entities.
-- The card uses the authenticated Home Assistant frontend API to read calendar events.
-- If Home Assistant does not show an updated card after installation or upgrade, reload the browser and clear the browser cache if necessary.
-
 ## Development
 
 ```bash
