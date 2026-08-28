@@ -1,6 +1,6 @@
 # Multiday Calendar Card
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Uko&repository=multiday-calendar-card&category=Dashboard)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Uko&repository=multiday-calendar-card&category=plugin)
 
 A Home Assistant Dashboard card that turns one or more `calendar.*` entities into a readable multi-day schedule. It shows day columns, a vertical time axis, duration-sized event blocks, all-day events, and overlapping events in one view.
 
@@ -23,7 +23,7 @@ It exists for dashboards and kiosks where a compact calendar list is not enough:
 
 ### HACS
 
-[![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Uko&repository=multiday-calendar-card&category=Dashboard)
+[![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Uko&repository=multiday-calendar-card&category=plugin)
 
 1. Open the link above in a browser connected to your Home Assistant instance.
 2. In HACS, download **Multiday Calendar Card**.
