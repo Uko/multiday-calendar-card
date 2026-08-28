@@ -2,5 +2,5 @@
   "name": "Multiday Calendar Card",
   "render_readme": true,
   "filename": "multiday-calendar-card.js",
-  "type": "dashboard"
+  "type": "plugin"
 }
