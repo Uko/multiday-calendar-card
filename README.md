@@ -87,20 +87,19 @@ calendars:
 
 ### Card options
 
-| Option | Default | Description | Example |
-| --- | --- | --- | --- |
-| `type` | required | Card type. | `custom:multiday-calendar-card` |
-| `title` | no title | Optional heading. Omit it for a titleless card. | `Household schedule` |
-| `calendars` | `[]` | Calendar sources to show. Each source needs a `calendar.*` entity. | See [Calendar sources](#calendar-sources). |
-| `days` | `2` | Whole number of days to display, from `1` to `7`. | `3` |
-| `start_time` | `"06:00"` | First visible time, in `HH:mm` format. | `"07:30"` |
-| `end_time` | `"22:00"` | Last visible time, in `HH:mm` format. It must be after `start_time`; `"24:00"` is accepted as the end of the day. | `"20:00"` |
-| `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. | `15` |
-| `show_now_line` | `true` | Show or hide the current-time line. | `false` |
-| `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. | `4` |
-| `hour_height` | `56` | Timeline height in pixels per visible hour. Used when `height` is omitted. | `64` |
-| `height` | unset | Fixed outer-card height in pixels. It takes precedence over `hour_height` and compresses the timeline without hiding events. | `480` |
-| `refresh_interval` | `30` | Minutes between calendar refreshes. It must be a positive number. | `15` |
+| Option | Default | Description |
+| --- | --- | --- |
+| `title` | no title | Optional heading. Omit it for a titleless card. |
+| `calendars` | `[]` | Calendar sources to show. Each source needs a `calendar.*` entity. See [Calendar sources](#calendar-sources). |
+| `days` | `2` | Whole number of days to display, from `1` to `7`. |
+| `start_time` | `"06:00"` | First visible time, in `HH:mm` format. |
+| `end_time` | `"22:00"` | Last visible time, in `HH:mm` format. It must be after `start_time`; `"24:00"` is accepted as the end of the day. |
+| `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. |
+| `show_now_line` | `true` | Show or hide the current-time line. |
+| `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. |
+| `hour_height` | `56` | Timeline height in pixels per visible hour. Used when `height` is omitted. |
+| `height` | unset | Fixed outer-card height in pixels. It takes precedence over `hour_height` and compresses the timeline without hiding events. |
+| `refresh_interval` | `30` | Minutes between calendar refreshes. It must be a positive number. |
 
 ### Layout examples
 
