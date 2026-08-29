@@ -253,6 +253,20 @@ export function displayTitle(title: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
+/**
+ * A fixed-height card must own its title in the flex body so that it is part of
+ * the measured height. A native ha-card header is outside that body.
+ */
+export function cardTitlePlacement(
+  title: string | undefined,
+  fixedHeight: boolean,
+): { cardHeader: string | undefined; bodyTitle: string | undefined } {
+  const display = displayTitle(title);
+  return fixedHeight
+    ? { cardHeader: undefined, bodyTitle: display }
+    : { cardHeader: display, bodyTitle: undefined };
+}
+
 export function eventPlacementForDay(
   event: CalendarApiEvent,
   day: Date,

@@ -4,6 +4,7 @@ import {
   buildCalendarEventsPath,
   CALENDAR_FETCH_RECOVERY_DELAY_MS,
   calendarHeaderHeight,
+  cardTitlePlacement,
   displayTitle,
   eventPlacementForDay,
   eventRangeForDays,
@@ -468,8 +469,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .join('');
 
     const title = displayTitle(config.title);
+    const titlePlacement = cardTitlePlacement(config.title, fixedHeight);
     const accessibleTitle = title ?? 'Multi-day calendar';
-    const hasTitle = title !== undefined;
     const status = this._loading
       ? '<div class="status">Loading calendar events…</div>'
       : this._error
@@ -481,8 +482,9 @@ class MultiDayCalendarCard extends HTMLElement {
             : '';
 
     this.innerHTML = `
-      <ha-card class="${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? ` style="height: ${config.height}px"` : ''}${hasTitle ? ` header="${escapeHtml(title!)}"` : ''}>
-        <div class="wrapper ${fixedHeight ? 'fixed-height' : ''}${hasTitle ? '' : ' titleless'}">
+      <ha-card class="${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? ` style="height: ${config.height}px"` : ''}${titlePlacement.cardHeader ? ` header="${escapeHtml(titlePlacement.cardHeader)}"` : ''}>
+        <div class="wrapper ${fixedHeight ? 'fixed-height' : ''}">
+          ${titlePlacement.bodyTitle ? `<h1 class="fixed-height-title">${escapeHtml(titlePlacement.bodyTitle)}</h1>` : ''}
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
             <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}" style="--day-header-height: ${dayHeaderHeight}px;${fixedHeight ? '' : ` height: ${timelineHeight + dayHeaderHeight}px;`}">
@@ -499,8 +501,8 @@ class MultiDayCalendarCard extends HTMLElement {
     style.textContent = `
       ha-card { display: block; }
       .wrapper { padding: ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px ${CALENDAR_VISUAL_LAYOUT.paddingRightPx}px 12px ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px; overflow-x: auto; }
-      .wrapper.fixed-height { box-sizing: border-box; height: calc(100% - 56px); display: flex; flex-direction: column; }
-      .wrapper.fixed-height.titleless { height: 100%; }
+      .wrapper.fixed-height { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; }
+      .fixed-height-title { flex: 0 0 auto; margin: 8px 0 16px; font-size: 24px; font-weight: 400; line-height: 1.2; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
       .schedule { display: grid; grid-template-columns: ${measuredTimeAxisWidth}px minmax(0, 1fr); min-width: 460px; }

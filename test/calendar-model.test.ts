@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   allDayEventPlacementForDay,
   calendarHeaderHeight,
+  cardTitlePlacement,
   buildCalendarEventsPath,
   eventPlacementForDay,
   displayTitle,
@@ -81,6 +82,21 @@ test('displayTitle omits blank titles but retains meaningful text', () => {
   assert.equal(displayTitle(undefined), undefined);
   assert.equal(displayTitle('   '), undefined);
   assert.equal(displayTitle(' Calendar '), 'Calendar');
+});
+
+test('cardTitlePlacement keeps a fixed-height title inside the measured card body', () => {
+  assert.deepEqual(cardTitlePlacement(' Calendar ', true), {
+    cardHeader: undefined,
+    bodyTitle: 'Calendar',
+  });
+  assert.deepEqual(cardTitlePlacement(' Calendar ', false), {
+    cardHeader: 'Calendar',
+    bodyTitle: undefined,
+  });
+  assert.deepEqual(cardTitlePlacement('   ', true), {
+    cardHeader: undefined,
+    bodyTitle: undefined,
+  });
 });
 
 test('allDayEventPlacementForDay includes date-only events on every covered local day', () => {
