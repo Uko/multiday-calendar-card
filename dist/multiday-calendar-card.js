@@ -517,6 +517,10 @@ class MultiDayCalendarCard extends HTMLElement {
         this._loading = false;
         this._failedFetchAttempts = 0;
         this._lastEventsUpdateMs = 0;
+        this.handleConnectionReady = () => {
+            if (this.isConnected)
+                void this.loadEvents(true);
+        };
         this.handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' &&
                 shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs)) {
@@ -600,15 +604,18 @@ class MultiDayCalendarCard extends HTMLElement {
             this.startRefreshTimer();
     }
     set hass(hass) {
+        const receivedInitialHass = this._hass === undefined;
         this._hass = hass;
-        this.render();
-        void this.loadEvents(this._error !== undefined);
+        this.watchConnection(hass.connection);
+        if (receivedInitialHass)
+            void this.loadEvents(this._error !== undefined);
     }
     getCardSize() {
         return 8;
     }
     connectedCallback() {
         this.render();
+        this.watchConnection(this._hass?.connection);
         void this.loadEvents();
         this.startRefreshTimer();
         document.addEventListener('visibilitychange', this.handleVisibilityChange);
@@ -619,7 +626,15 @@ class MultiDayCalendarCard extends HTMLElement {
             this._refreshTimerId = undefined;
         }
         this.cancelRecoveryRefresh();
+        this.watchConnection();
         document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    watchConnection(connection) {
+        if (connection === this._connection)
+            return;
+        this._connection?.removeEventListener('ready', this.handleConnectionReady);
+        this._connection = connection;
+        this._connection?.addEventListener('ready', this.handleConnectionReady);
     }
     startRefreshTimer() {
         if (!this._config)

@@ -23,7 +23,13 @@ export {};
 
 type HomeAssistantLike = {
   locale?: { language?: string };
+  connection?: HomeAssistantConnection;
   callApi<T>(method: string, path: string): Promise<T>;
+};
+
+type HomeAssistantConnection = {
+  addEventListener(type: 'ready', listener: () => void): void;
+  removeEventListener(type: 'ready', listener: () => void): void;
 };
 
 type CalendarConfig = {
@@ -137,6 +143,7 @@ class MultiDayCalendarCard extends HTMLElement {
   private _recoveryTimerId?: number;
   private _failedFetchAttempts = 0;
   private _lastEventsUpdateMs = 0;
+  private _connection?: HomeAssistantConnection;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
     if (!config?.type) {
@@ -210,9 +217,10 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   set hass(hass: HomeAssistantLike) {
+    const receivedInitialHass = this._hass === undefined;
     this._hass = hass;
-    this.render();
-    void this.loadEvents(this._error !== undefined);
+    this.watchConnection(hass.connection);
+    if (receivedInitialHass) void this.loadEvents(this._error !== undefined);
   }
 
   getCardSize(): number {
@@ -221,6 +229,7 @@ class MultiDayCalendarCard extends HTMLElement {
 
   connectedCallback(): void {
     this.render();
+    this.watchConnection(this._hass?.connection);
     void this.loadEvents();
     this.startRefreshTimer();
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
@@ -232,8 +241,20 @@ class MultiDayCalendarCard extends HTMLElement {
       this._refreshTimerId = undefined;
     }
     this.cancelRecoveryRefresh();
+    this.watchConnection();
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
+
+  private watchConnection(connection?: HomeAssistantConnection): void {
+    if (connection === this._connection) return;
+    this._connection?.removeEventListener('ready', this.handleConnectionReady);
+    this._connection = connection;
+    this._connection?.addEventListener('ready', this.handleConnectionReady);
+  }
+
+  private handleConnectionReady = (): void => {
+    if (this.isConnected) void this.loadEvents(true);
+  };
 
   private handleVisibilityChange = (): void => {
     if (
