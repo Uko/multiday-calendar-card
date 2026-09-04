@@ -17,6 +17,9 @@ import {
 } from './calendar-model';
 import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
 import { parseTime } from './editor-model';
+import { normalizeTapAction, type EventAction } from './event-interaction';
+import type { EventDetailDialogParams } from './multiday-calendar-event-dialog';
+import './multiday-calendar-event-dialog';
 import './multiday-calendar-card-editor';
 
 export {};
@@ -55,6 +58,8 @@ type MultiDayCalendarCardConfig = {
   show_now_line?: boolean;
   /** Maximum concurrent timed-event lanes per overlap group. */
   max_simultaneous_events?: number;
+  /** Action applied when a calendar event is tapped. */
+  tap_action?: EventAction;
 };
 
 type LoadedEvent = {
@@ -84,6 +89,7 @@ const DEFAULT_CONFIG: Required<
   hour_height: 56,
   show_now_line: true,
   max_simultaneous_events: 3,
+  tap_action: { action: 'none' },
   calendars: [],
 };
 
@@ -207,6 +213,7 @@ class MultiDayCalendarCard extends HTMLElement {
       height,
       hour_height: hourHeight,
       calendars,
+      tap_action: normalizeTapAction(config.tap_action),
     };
     this._requestKey = undefined;
     this.cancelRecoveryRefresh();
@@ -340,6 +347,38 @@ class MultiDayCalendarCard extends HTMLElement {
     }
   }
 
+  private showEventDetails(eventIndex: number): void {
+    const loadedEvent = this._events[eventIndex];
+    if (!loadedEvent) return;
+    const dialogParams: EventDetailDialogParams = {
+      calendarName: loadedEvent.calendar.label ?? loadedEvent.calendar.entity,
+      event: loadedEvent.event,
+    };
+    this.dispatchEvent(new CustomEvent('show-dialog', {
+      bubbles: true,
+      composed: true,
+      detail: {
+        dialogTag: 'multiday-calendar-event-dialog',
+        dialogImport: async () => undefined,
+        dialogParams,
+      },
+    }));
+  }
+
+  private bindEventActions(): void {
+    if (this._config?.tap_action.action !== 'more-info') return;
+    this.querySelectorAll<HTMLElement>('[data-event-index]').forEach((element) => {
+      const showDetails = () => this.showEventDetails(Number(element.dataset.eventIndex));
+      element.addEventListener('click', showDetails);
+      element.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          showDetails();
+        }
+      });
+    });
+  }
+
   private render(): void {
     if (!this._config) return;
 
@@ -411,23 +450,26 @@ class MultiDayCalendarCard extends HTMLElement {
     const dayColumns = days
       .map((day) => {
         const allDayPlacements = this._events
-          .map(({ calendar, event }) => ({
+          .map(({ calendar, event }, eventIndex) => ({
             calendar,
+            eventIndex,
             placement: allDayEventPlacementForDay(event, day),
           }))
           .filter(
-            (item): item is { calendar: CalendarConfig; placement: NonNullable<typeof item.placement> } =>
+            (item): item is { calendar: CalendarConfig; eventIndex: number; placement: NonNullable<typeof item.placement> } =>
               item.placement !== undefined,
           );
         const allDayEvents = allDayPlacements
-          .map(({ calendar, placement }) => {
+          .map(({ calendar, eventIndex, placement }) => {
             const calendarName = calendar.label ?? calendar.entity;
-            return `<div class="all-day-event" style="--event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">${escapeHtml(placement.summary)}</div>`;
+            const interactive = config.tap_action.action === 'more-info';
+            return `<div class="all-day-event${interactive ? ' interactive-event' : ''}"${interactive ? ` data-event-index="${eventIndex}" role="button" tabindex="0"` : ''} style="--event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">${escapeHtml(placement.summary)}</div>`;
           })
           .join('');
         const placements = this._events
-          .map(({ calendar, event }) => ({
+          .map(({ calendar, event }, eventIndex) => ({
             calendar,
+            eventIndex,
             placement: eventPlacementForDay(
               event,
               day,
@@ -436,12 +478,12 @@ class MultiDayCalendarCard extends HTMLElement {
             ),
           }))
           .filter(
-            (item): item is { calendar: CalendarConfig; placement: NonNullable<typeof item.placement> } =>
+            (item): item is { calendar: CalendarConfig; eventIndex: number; placement: NonNullable<typeof item.placement> } =>
               item.placement !== undefined,
           );
         const laneLayout = layoutTimedEventLanes(
-          placements.map(({ calendar, placement }) => ({
-            event: { calendar, placement },
+          placements.map(({ calendar, eventIndex, placement }) => ({
+            event: { calendar, eventIndex, placement },
             startMinutes: placement.startMinutes,
             durationMinutes: placement.durationMinutes,
           })),
@@ -454,9 +496,10 @@ class MultiDayCalendarCard extends HTMLElement {
           return `top: ${top}%; height: ${height}%; left: calc(${lane * laneWidth}% + 4px); width: calc(${laneWidth}% - 8px)`;
         };
         const events = laneLayout.events
-          .map(({ event: { calendar, placement }, lane, laneCount }) => {
+          .map(({ event: { calendar, eventIndex, placement }, lane, laneCount }) => {
             const calendarName = calendar.label ?? calendar.entity;
-            return `<div class="event" style="${eventStyle(placement.startMinutes, placement.durationMinutes, lane, laneCount)}; --event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">
+            const interactive = config.tap_action.action === 'more-info';
+            return `<div class="event${interactive ? ' interactive-event' : ''}"${interactive ? ` data-event-index="${eventIndex}" role="button" tabindex="0"` : ''} style="${eventStyle(placement.startMinutes, placement.durationMinutes, lane, laneCount)}; --event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">
               <div class="event-summary">${escapeHtml(placement.summary)}</div>
               <div class="event-calendar">${escapeHtml(calendarName)}</div>
             </div>`;
@@ -548,6 +591,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
       .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 1.2; z-index: 1; }
       .event-overflow { border-left-style: dashed; font-style: italic; }
+      .interactive-event { cursor: pointer; }
+      .interactive-event:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
       .event-summary { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .event-calendar { color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--error-color); z-index: 2; pointer-events: none; }
@@ -556,6 +601,7 @@ class MultiDayCalendarCard extends HTMLElement {
 
     style.setAttribute('data-multiday-calendar-card', '');
     this.appendChild(style);
+    this.bindEventActions();
   }
 }
 

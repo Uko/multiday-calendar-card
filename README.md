@@ -60,6 +60,8 @@ slot_minutes: 30
 hour_height: 56
 show_now_line: true
 max_simultaneous_events: 3
+tap_action:
+  action: more-info
 calendars:
   - entity: calendar.household
     label: Household
@@ -97,6 +99,7 @@ calendars:
 | `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. |
 | `show_now_line` | `true` | Show or hide the current-time line. |
 | `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. |
+| `tap_action` | `{ action: none }` | Action for a tapped displayed event. Use `{ action: more-info }` to open a read-only event popup; only `none` and `more-info` are currently supported. |
 | `hour_height` | `56` | Timeline height in pixels per visible hour. Used when `height` is omitted. |
 | `height` | unset | Fixed outer-card height in pixels. It takes precedence over `hour_height` and compresses the timeline without hiding events. |
 | `refresh_interval` | `30` | Minutes between calendar refreshes. It must be a positive number. |
@@ -133,6 +136,7 @@ The Home Assistant card editor exposes the common options in three groups:
 
 - **Calendar sources** — calendar entities, display labels, and event colors.
 - **View & schedule** — title, day count, visible hours, grid interval, current-time line, and overlap limit.
+- **Interactions** — show event details on tap.
 - **Layout & density** — automatic height with pixels per hour, or a fixed-height timeline.
 
 Less-common operational settings, such as `refresh_interval`, remain available in YAML. The card refreshes calendar data every 30 minutes by default. If a calendar request fails, it performs up to two one-minute recovery retries before returning to the normal cadence.

@@ -94,6 +94,15 @@ test('validateEditorConfig validates hour height only when fixed packing is disa
   assert.deepEqual(validateEditorConfig({ ...base, height: 480, hour_height: 0 }), []);
 });
 
+test('validateEditorConfig accepts event more-info taps and rejects unsupported actions', () => {
+  const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
+
+  assert.deepEqual(validateEditorConfig({ ...base, tap_action: { action: 'more-info' } }), []);
+  assert.deepEqual(validateEditorConfig({ ...base, tap_action: { action: 'navigate' } }), [
+    'tap_action.action must be "none" or "more-info".',
+  ]);
+});
+
 test('validateEditorConfig rejects incomplete calendar and invalid view/density values', () => {
   assert.deepEqual(validateEditorConfig({
     type: 'custom:multiday-calendar-card',

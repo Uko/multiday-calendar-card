@@ -1,5 +1,8 @@
 export type CalendarApiEvent = {
   summary?: string;
+  description?: string;
+  location?: string;
+  url?: string;
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
 };

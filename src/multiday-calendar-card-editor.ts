@@ -110,6 +110,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     const fixedHeight = config.height !== undefined && config.height !== null;
     const startTime = config.start_time ?? '06:00';
     const endTime = config.end_time ?? '22:00';
+    const tapAction = config.tap_action?.action ?? 'none';
 
     this.innerHTML = `
       <style>
@@ -166,6 +167,10 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <section class="section">
+        <h3>Interactions</h3>
+        <div class="field"><label>Tap action</label><select data-action="tap-action"><option value="none" ${tapAction === 'none' ? 'selected' : ''}>Do nothing</option><option value="more-info" ${tapAction === 'more-info' ? 'selected' : ''}>Show event details</option></select><div class="hint">More info opens a read-only popup for the selected calendar event. Hold and double-tap actions are reserved for a future release.</div></div>
+      </section>
+      <section class="section">
         <h3>Layout & density</h3>
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
         <div class="field"><label>Hour height (pixels)</label><input data-config="hour_height" type="number" min="1" step="1" value="${config.hour_height ?? 56}" ${fixedHeight ? 'disabled' : ''}><div class="hint">Timeline height per visible hour. Defaults to 56 pixels when omitted.</div></div>
@@ -193,6 +198,9 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     this.querySelector('[data-action="fixed-height"]')?.addEventListener('change', (event) => {
       const fixed = (event.target as HTMLInputElement).checked;
       this.updateConfig({ height: fixed ? 480 : null }, true);
+    });
+    this.querySelector<HTMLSelectElement>('[data-action="tap-action"]')?.addEventListener('change', (event) => {
+      this.updateConfig({ tap_action: { action: (event.target as HTMLSelectElement).value as 'none' | 'more-info' } });
     });
     this.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-config]').forEach((field) => field.addEventListener('change', () => {
       const key = field.dataset.config as keyof EditorConfig;

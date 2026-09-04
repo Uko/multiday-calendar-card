@@ -1,3 +1,5 @@
+import { validateTapAction, type EventAction } from './event-interaction';
+
 export type CalendarEditorConfig = {
   entity: string;
   color?: string;
@@ -17,6 +19,8 @@ export type EditorConfig = {
   hour_height?: number;
   show_now_line?: boolean;
   max_simultaneous_events?: number;
+  /** Action for a tapped event; hold_action and double_tap_action are reserved for future releases. */
+  tap_action?: EventAction;
   [key: string]: unknown;
 };
 
@@ -74,6 +78,8 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   if (config.max_simultaneous_events !== undefined && (!Number.isInteger(config.max_simultaneous_events) || config.max_simultaneous_events < 1)) {
     errors.push('Maximum simultaneous events must be a positive whole number.');
   }
+  const tapActionError = validateTapAction(config.tap_action);
+  if (tapActionError) errors.push(tapActionError);
 
   return errors;
 }
