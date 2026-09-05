@@ -7,6 +7,8 @@ import {
 
 export type EventDetailDialogParams = {
   calendarName: string;
+  calendarColor: string;
+  showLocationMap: boolean;
   event: CalendarApiEvent;
 };
 
@@ -18,6 +20,10 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
   })[character] ?? character);
+}
+
+function safeCalendarColor(value: string): string {
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : 'var(--primary-color)';
 }
 
 function localDate(value: string): Date | undefined {
@@ -111,27 +117,27 @@ class MultidayCalendarEventDialog extends HTMLElement {
 
   private render(): void {
     if (!this._params) return;
-    const { calendarName, event } = this._params;
+    const { calendarName, calendarColor, showLocationMap, event } = this._params;
     const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
     const title = eventDetailTitle(event.summary);
     const location = event.location?.trim();
     const url = event.url ? safeUrl(event.url) : undefined;
     this.innerHTML = `
       <ha-dialog open heading="${escapeHtml(title)}">
-        <div class="details">
+        <div class="details" style="--calendar-color: ${safeCalendarColor(calendarColor)}">
           <dl>
             <div><dt>When</dt><dd>${escapeHtml(eventDateRange(event, locale))}</dd></div>
             <div><dt>Calendar</dt><dd>${escapeHtml(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml(location)}</dd></div>` : ''}
           </dl>
-          ${location ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
+          ${location && showLocationMap ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
         <button slot="primaryAction" type="button">Close</button>
       </ha-dialog>
       <style>
-        .details { min-width: min(420px, 80vw); }
+        .details { min-width: min(420px, 80vw); border-top: 4px solid var(--calendar-color); }
         dl { margin: 0; }
         dl > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.75rem; margin: 0.75rem 0; }
         dt { color: var(--secondary-text-color); }
@@ -146,7 +152,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
     `;
     this.querySelector('ha-dialog')?.addEventListener('closed', this.onClosed, { once: true });
     this.querySelector('button')?.addEventListener('click', this.onClosed, { once: true });
-    if (location) void this.renderLocationMap(location, title);
+    if (location && showLocationMap) void this.renderLocationMap(location, title);
   }
 }
 

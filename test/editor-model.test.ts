@@ -103,6 +103,15 @@ test('validateEditorConfig accepts event more-info taps and rejects unsupported 
   ]);
 });
 
+test('validateEditorConfig requires the optional location map setting to be boolean', () => {
+  const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
+
+  assert.deepEqual(validateEditorConfig({ ...base, show_location_map: false }), []);
+  assert.deepEqual(validateEditorConfig({ ...base, show_location_map: 'yes' }), [
+    'Show location map must be true or false.',
+  ]);
+});
+
 test('validateEditorConfig rejects incomplete calendar and invalid view/density values', () => {
   assert.deepEqual(validateEditorConfig({
     type: 'custom:multiday-calendar-card',

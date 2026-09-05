@@ -204,6 +204,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
       <section class="section">
         <h3>Interactions</h3>
         <div data-interaction-editor></div>
+        <label class="toggle"><input data-config="show_location_map" type="checkbox" ${config.show_location_map === true ? 'checked' : ''}> Show a map for event locations</label>
       </section>
       <section class="section">
         <h3>Layout & density</h3>

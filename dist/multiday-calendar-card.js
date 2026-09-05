@@ -293,6 +293,9 @@ function validateEditorConfig(config) {
     const tapActionError = validateTapAction(config.tap_action);
     if (tapActionError)
         errors.push(tapActionError);
+    if (config.show_location_map !== undefined && typeof config.show_location_map !== 'boolean') {
+        errors.push('Show location map must be true or false.');
+    }
     return errors;
 }
 function editorWarnings(config) {
@@ -370,6 +373,9 @@ function escapeHtml$2(value) {
     return value.replace(/[&<>'"]/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
     })[character] ?? character);
+}
+function safeCalendarColor(value) {
+    return /^#[0-9a-f]{6}$/i.test(value) ? value : 'var(--primary-color)';
 }
 function localDate(value) {
     const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -463,27 +469,27 @@ class MultidayCalendarEventDialog extends HTMLElement {
     render() {
         if (!this._params)
             return;
-        const { calendarName, event } = this._params;
+        const { calendarName, calendarColor, showLocationMap, event } = this._params;
         const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
         const title = eventDetailTitle(event.summary);
         const location = event.location?.trim();
         const url = event.url ? safeUrl(event.url) : undefined;
         this.innerHTML = `
       <ha-dialog open heading="${escapeHtml$2(title)}">
-        <div class="details">
+        <div class="details" style="--calendar-color: ${safeCalendarColor(calendarColor)}">
           <dl>
             <div><dt>When</dt><dd>${escapeHtml$2(eventDateRange(event, locale))}</dd></div>
             <div><dt>Calendar</dt><dd>${escapeHtml$2(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml$2(location)}</dd></div>` : ''}
           </dl>
-          ${location ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
+          ${location && showLocationMap ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml$2(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml$2(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
         <button slot="primaryAction" type="button">Close</button>
       </ha-dialog>
       <style>
-        .details { min-width: min(420px, 80vw); }
+        .details { min-width: min(420px, 80vw); border-top: 4px solid var(--calendar-color); }
         dl { margin: 0; }
         dl > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.75rem; margin: 0.75rem 0; }
         dt { color: var(--secondary-text-color); }
@@ -498,7 +504,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
     `;
         this.querySelector('ha-dialog')?.addEventListener('closed', this.onClosed, { once: true });
         this.querySelector('button')?.addEventListener('click', this.onClosed, { once: true });
-        if (location)
+        if (location && showLocationMap)
             void this.renderLocationMap(location, title);
     }
 }
@@ -672,6 +678,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
       <section class="section">
         <h3>Interactions</h3>
         <div data-interaction-editor></div>
+        <label class="toggle"><input data-config="show_location_map" type="checkbox" ${config.show_location_map === true ? 'checked' : ''}> Show a map for event locations</label>
       </section>
       <section class="section">
         <h3>Layout & density</h3>
@@ -741,6 +748,7 @@ const DEFAULT_CONFIG = {
     show_now_line: true,
     max_simultaneous_events: 3,
     tap_action: { action: 'none' },
+    show_location_map: false,
     calendars: [],
 };
 function escapeHtml(value) {
@@ -964,6 +972,8 @@ class MultiDayCalendarCard extends HTMLElement {
             return;
         const dialogParams = {
             calendarName: loadedEvent.calendar.label ?? loadedEvent.calendar.entity,
+            calendarColor: safeColor(loadedEvent.calendar.color),
+            showLocationMap: this._config?.show_location_map ?? false,
             event: loadedEvent.event,
         };
         this.dispatchEvent(new CustomEvent('show-dialog', {

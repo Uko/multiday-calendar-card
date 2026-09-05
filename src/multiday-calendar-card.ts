@@ -60,6 +60,8 @@ type MultiDayCalendarCardConfig = {
   max_simultaneous_events?: number;
   /** Action applied when a calendar event is tapped. */
   tap_action?: EventAction;
+  /** Whether event locations may be sent to Nominatim and shown on a map. */
+  show_location_map?: boolean;
 };
 
 type LoadedEvent = {
@@ -90,6 +92,7 @@ const DEFAULT_CONFIG: Required<
   show_now_line: true,
   max_simultaneous_events: 3,
   tap_action: { action: 'none' },
+  show_location_map: false,
   calendars: [],
 };
 
@@ -352,6 +355,8 @@ class MultiDayCalendarCard extends HTMLElement {
     if (!loadedEvent) return;
     const dialogParams: EventDetailDialogParams = {
       calendarName: loadedEvent.calendar.label ?? loadedEvent.calendar.entity,
+      calendarColor: safeColor(loadedEvent.calendar.color),
+      showLocationMap: this._config?.show_location_map ?? false,
       event: loadedEvent.event,
     };
     this.dispatchEvent(new CustomEvent('show-dialog', {

@@ -19,8 +19,8 @@ export type EditorConfig = {
   hour_height?: number;
   show_now_line?: boolean;
   max_simultaneous_events?: number;
-  /** Action for a tapped event; hold_action and double_tap_action are reserved for future releases. */
   tap_action?: EventAction;
+  show_location_map?: boolean;
   [key: string]: unknown;
 };
 
@@ -80,6 +80,9 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   }
   const tapActionError = validateTapAction(config.tap_action);
   if (tapActionError) errors.push(tapActionError);
+  if (config.show_location_map !== undefined && typeof config.show_location_map !== 'boolean') {
+    errors.push('Show location map must be true or false.');
+  }
 
   return errors;
 }
