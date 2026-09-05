@@ -8,7 +8,7 @@ import {
   type CalendarEditorConfig,
   type EditorConfig,
 } from './editor-model';
-import { normalizeTapAction, type EventAction } from './event-interaction';
+import { type EventAction } from './event-interaction';
 
 type HomeAssistantLike = {
   states?: Record<string, unknown>;
@@ -22,23 +22,36 @@ type EntityPicker = HTMLElement & {
 
 type ActionEditorForm = HTMLElement & {
   hass?: HomeAssistantLike;
-  data?: { tap_action?: EventAction };
+  data?: { tap_action?: EventAction; show_location_map?: boolean };
   schema?: unknown;
+  computeLabel?: (schema: { name: string }) => string;
 };
 
 const CARD_TYPE = 'custom:multiday-calendar-card';
 
-// This matches the Gauge card's interaction selector, limited to actions this
-// calendar card implements.
+// Match the Gauge card's native expandable interactions editor while exposing
+// only the calendar card actions it actually implements.
 const INTERACTION_SCHEMA = [
   {
-    name: 'tap_action',
-    selector: {
-      ui_action: {
-        actions: ['more-info', 'none'],
-        default_action: 'none',
+    name: 'interactions',
+    type: 'expandable',
+    title: 'Interactions',
+    icon: 'mdi:gesture-tap',
+    flatten: true,
+    expanded: true,
+    schema: [
+      {
+        name: 'tap_action',
+        selector: {
+          ui_action: {
+            actions: ['more-info', 'none'],
+            default_action: 'none',
+          },
+        },
       },
-    },
+      { name: '', type: 'divider' },
+      { name: 'show_location_map', selector: { boolean: {} } },
+    ],
   },
 ];
 
@@ -120,11 +133,24 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     if (!target) return;
     const editor = document.createElement('ha-form') as ActionEditorForm;
     editor.hass = this._hass;
-    editor.data = { tap_action: normalizeTapAction(this._config.tap_action) };
+    editor.data = {
+      tap_action: this._config.tap_action,
+      show_location_map: this._config.show_location_map === true,
+    };
     editor.schema = INTERACTION_SCHEMA;
+    editor.computeLabel = (schema) => {
+      if (schema.name === 'tap_action') return 'Tap behaviour (optional)';
+      if (schema.name === 'show_location_map') {
+        return 'Show a map for event locations (coordinates will be resolved with Nominatim service)';
+      }
+      return schema.name;
+    };
     editor.addEventListener('value-changed', (event) => {
-      const value = (event as CustomEvent<{ value: { tap_action?: EventAction } }>).detail.value;
-      this.updateConfig({ tap_action: value.tap_action });
+      const value = (event as CustomEvent<{ value: { tap_action?: EventAction; show_location_map?: boolean } }>).detail.value;
+      this.updateConfig({
+        tap_action: value.tap_action,
+        show_location_map: value.show_location_map === true,
+      });
     });
     target.replaceChildren(editor);
   }
@@ -201,11 +227,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
-      <section class="section">
-        <h3>Interactions</h3>
-        <div data-interaction-editor></div>
-        <label class="toggle"><input data-config="show_location_map" type="checkbox" ${config.show_location_map === true ? 'checked' : ''}> Show a map for event locations</label>
-      </section>
+      <div data-interaction-editor></div>
       <section class="section">
         <h3>Layout & density</h3>
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>

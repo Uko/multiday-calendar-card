@@ -454,7 +454,9 @@ class MultidayCalendarEventDialog extends HTMLElement {
                 return;
             }
             const mapUrl = openStreetMapEmbedUrl(coordinates);
-            target.innerHTML = `<iframe title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml$2(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
+            const themeClass = this._params?.isDarkTheme ? 'dark-map' : 'light-map';
+            target.hidden = false;
+            target.innerHTML = `<iframe class="${themeClass}" title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml$2(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
         }
         catch (error) {
             if (error.name === 'AbortError')
@@ -482,7 +484,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
             <div><dt>Calendar</dt><dd>${escapeHtml$2(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml$2(location)}</dd></div>` : ''}
           </dl>
-          ${location && showLocationMap ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
+          ${location && showLocationMap ? '<section class="map" data-map-location hidden></section>' : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml$2(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml$2(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -497,6 +499,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
         h3 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
         .map { margin: 1rem 0; }
         .map iframe { display: block; width: 100%; height: 240px; border: 0; border-radius: 8px; }
+        .map iframe.dark-map { filter: brightness(0.8) invert(0.9) hue-rotate(180deg) saturate(0.8); }
         .map .attribution { margin: 0.35rem 0 0; font-size: 0.75rem; }
         p { white-space: pre-line; overflow-wrap: anywhere; }
         button { color: var(--primary-color); background: transparent; border: 0; font: inherit; font-weight: 500; cursor: pointer; padding: 8px; }
@@ -511,17 +514,29 @@ class MultidayCalendarEventDialog extends HTMLElement {
 customElements.define('multiday-calendar-event-dialog', MultidayCalendarEventDialog);
 
 const CARD_TYPE = 'custom:multiday-calendar-card';
-// This matches the Gauge card's interaction selector, limited to actions this
-// calendar card implements.
+// Match the Gauge card's native expandable interactions editor while exposing
+// only the calendar card actions it actually implements.
 const INTERACTION_SCHEMA = [
     {
-        name: 'tap_action',
-        selector: {
-            ui_action: {
-                actions: ['more-info', 'none'],
-                default_action: 'none',
+        name: 'interactions',
+        type: 'expandable',
+        title: 'Interactions',
+        icon: 'mdi:gesture-tap',
+        flatten: true,
+        expanded: true,
+        schema: [
+            {
+                name: 'tap_action',
+                selector: {
+                    ui_action: {
+                        actions: ['more-info', 'none'],
+                        default_action: 'none',
+                    },
+                },
             },
-        },
+            { name: '', type: 'divider' },
+            { name: 'show_location_map', selector: { boolean: {} } },
+        ],
     },
 ];
 function escapeHtml$1(value) {
@@ -596,11 +611,25 @@ class MultidayCalendarCardEditor extends HTMLElement {
             return;
         const editor = document.createElement('ha-form');
         editor.hass = this._hass;
-        editor.data = { tap_action: normalizeTapAction(this._config.tap_action) };
+        editor.data = {
+            tap_action: this._config.tap_action,
+            show_location_map: this._config.show_location_map === true,
+        };
         editor.schema = INTERACTION_SCHEMA;
+        editor.computeLabel = (schema) => {
+            if (schema.name === 'tap_action')
+                return 'Tap behaviour (optional)';
+            if (schema.name === 'show_location_map') {
+                return 'Show a map for event locations (coordinates will be resolved with Nominatim service)';
+            }
+            return schema.name;
+        };
         editor.addEventListener('value-changed', (event) => {
             const value = event.detail.value;
-            this.updateConfig({ tap_action: value.tap_action });
+            this.updateConfig({
+                tap_action: value.tap_action,
+                show_location_map: value.show_location_map === true,
+            });
         });
         target.replaceChildren(editor);
     }
@@ -675,11 +704,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
-      <section class="section">
-        <h3>Interactions</h3>
-        <div data-interaction-editor></div>
-        <label class="toggle"><input data-config="show_location_map" type="checkbox" ${config.show_location_map === true ? 'checked' : ''}> Show a map for event locations</label>
-      </section>
+      <div data-interaction-editor></div>
       <section class="section">
         <h3>Layout & density</h3>
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
@@ -974,6 +999,7 @@ class MultiDayCalendarCard extends HTMLElement {
             calendarName: loadedEvent.calendar.label ?? loadedEvent.calendar.entity,
             calendarColor: safeColor(loadedEvent.calendar.color),
             showLocationMap: this._config?.show_location_map ?? false,
+            isDarkTheme: this._hass?.themes?.darkMode === true,
             event: loadedEvent.event,
         };
         this.dispatchEvent(new CustomEvent('show-dialog', {

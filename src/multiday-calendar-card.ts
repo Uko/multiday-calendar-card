@@ -26,6 +26,7 @@ export {};
 
 type HomeAssistantLike = {
   locale?: { language?: string };
+  themes?: { darkMode?: boolean };
   connection?: HomeAssistantConnection;
   callApi<T>(method: string, path: string): Promise<T>;
 };
@@ -357,6 +358,7 @@ class MultiDayCalendarCard extends HTMLElement {
       calendarName: loadedEvent.calendar.label ?? loadedEvent.calendar.entity,
       calendarColor: safeColor(loadedEvent.calendar.color),
       showLocationMap: this._config?.show_location_map ?? false,
+      isDarkTheme: this._hass?.themes?.darkMode === true,
       event: loadedEvent.event,
     };
     this.dispatchEvent(new CustomEvent('show-dialog', {

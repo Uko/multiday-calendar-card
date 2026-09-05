@@ -9,11 +9,13 @@ export type EventDetailDialogParams = {
   calendarName: string;
   calendarColor: string;
   showLocationMap: boolean;
+  isDarkTheme: boolean;
   event: CalendarApiEvent;
 };
 
 type HomeAssistantLike = {
   locale?: { language?: string };
+  themes?: { darkMode?: boolean };
 };
 
 function escapeHtml(value: string): string {
@@ -106,7 +108,9 @@ class MultidayCalendarEventDialog extends HTMLElement {
         return;
       }
       const mapUrl = openStreetMapEmbedUrl(coordinates);
-      target.innerHTML = `<iframe title="Map for ${escapeHtml(title)}" src="${escapeHtml(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
+      const themeClass = this._params?.isDarkTheme ? 'dark-map' : 'light-map';
+      target.hidden = false;
+      target.innerHTML = `<iframe class="${themeClass}" title="Map for ${escapeHtml(title)}" src="${escapeHtml(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
     } catch (error) {
       if ((error as DOMException).name === 'AbortError') return;
       target.remove();
@@ -130,7 +134,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
             <div><dt>Calendar</dt><dd>${escapeHtml(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml(location)}</dd></div>` : ''}
           </dl>
-          ${location && showLocationMap ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
+          ${location && showLocationMap ? '<section class="map" data-map-location hidden></section>' : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -145,6 +149,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
         h3 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
         .map { margin: 1rem 0; }
         .map iframe { display: block; width: 100%; height: 240px; border: 0; border-radius: 8px; }
+        .map iframe.dark-map { filter: brightness(0.8) invert(0.9) hue-rotate(180deg) saturate(0.8); }
         .map .attribution { margin: 0.35rem 0 0; font-size: 0.75rem; }
         p { white-space: pre-line; overflow-wrap: anywhere; }
         button { color: var(--primary-color); background: transparent; border: 0; font: inherit; font-weight: 500; cursor: pointer; padding: 8px; }
