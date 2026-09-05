@@ -308,18 +308,62 @@ function editorWarnings(config) {
     return warnings;
 }
 
+const NOMINATIM_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 function eventDetailTitle(summary) {
     return summary?.trim() || 'Untitled event';
 }
-/**
- * A location is untrusted calendar data, so it is only ever supplied as an
- * encoded search query rather than interpreted as a URL.
- */
-function locationMapEmbedUrl(location) {
-    const query = location?.trim();
-    if (!query)
+function nominatimSearchUrl(location) {
+    const url = new URL(NOMINATIM_SEARCH_ENDPOINT);
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('limit', '1');
+    url.searchParams.set('q', location);
+    return url.href;
+}
+function finiteCoordinate(value, minimum, maximum) {
+    const coordinate = typeof value === 'string' ? Number(value) : undefined;
+    return coordinate !== undefined && Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum
+        ? coordinate
+        : undefined;
+}
+function parseBoundingBox(value) {
+    if (!Array.isArray(value) || value.length !== 4)
         return undefined;
-    return `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed`;
+    const south = finiteCoordinate(value[0], -90, 90);
+    const north = finiteCoordinate(value[1], -90, 90);
+    const west = finiteCoordinate(value[2], -180, 180);
+    const east = finiteCoordinate(value[3], -180, 180);
+    return south === undefined || north === undefined || west === undefined || east === undefined || south > north || west > east
+        ? undefined
+        : [south, north, west, east];
+}
+async function geocodeLocation(location, fetcher = fetch, signal) {
+    const response = await fetcher(nominatimSearchUrl(location), { signal });
+    if (!response.ok)
+        return undefined;
+    const results = await response.json();
+    if (!Array.isArray(results) || !results[0] || typeof results[0] !== 'object')
+        return undefined;
+    const result = results[0];
+    const latitude = finiteCoordinate(result.lat, -90, 90);
+    const longitude = finiteCoordinate(result.lon, -180, 180);
+    if (latitude === undefined || longitude === undefined)
+        return undefined;
+    return { latitude, longitude, boundingBox: parseBoundingBox(result.boundingbox) };
+}
+function openStreetMapEmbedUrl(location) {
+    const latitudePadding = 0.006;
+    const longitudePadding = 0.01;
+    const [south, north, west, east] = location.boundingBox ?? [
+        Math.max(-90, location.latitude - latitudePadding),
+        Math.min(90, location.latitude + latitudePadding),
+        Math.max(-180, location.longitude - longitudePadding),
+        Math.min(180, location.longitude + longitudePadding),
+    ];
+    const url = new URL('https://www.openstreetmap.org/export/embed.html');
+    url.searchParams.set('bbox', `${west},${south},${east},${north}`);
+    url.searchParams.set('layer', 'mapnik');
+    url.searchParams.set('marker', `${location.latitude},${location.longitude}`);
+    return url.href;
 }
 
 function escapeHtml$2(value) {
@@ -378,13 +422,43 @@ class MultidayCalendarEventDialog extends HTMLElement {
         };
     }
     showDialog(params) {
+        this._geocodeController?.abort();
         this._params = params;
         this.render();
     }
     closeDialog() {
+        this._geocodeController?.abort();
+        this._geocodeController = undefined;
         this._params = undefined;
         this.innerHTML = '';
         return true;
+    }
+    async renderLocationMap(location, title) {
+        const target = this.querySelector('[data-map-location]');
+        if (!target)
+            return;
+        const controller = new AbortController();
+        this._geocodeController = controller;
+        try {
+            const coordinates = await geocodeLocation(location, fetch, controller.signal);
+            if (controller.signal.aborted || target !== this.querySelector('[data-map-location]'))
+                return;
+            if (!coordinates) {
+                target.remove();
+                return;
+            }
+            const mapUrl = openStreetMapEmbedUrl(coordinates);
+            target.innerHTML = `<iframe title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml$2(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
+        }
+        catch (error) {
+            if (error.name === 'AbortError')
+                return;
+            target.remove();
+        }
+        finally {
+            if (this._geocodeController === controller)
+                this._geocodeController = undefined;
+        }
     }
     render() {
         if (!this._params)
@@ -393,7 +467,6 @@ class MultidayCalendarEventDialog extends HTMLElement {
         const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
         const title = eventDetailTitle(event.summary);
         const location = event.location?.trim();
-        const locationMap = locationMapEmbedUrl(location);
         const url = event.url ? safeUrl(event.url) : undefined;
         this.innerHTML = `
       <ha-dialog open heading="${escapeHtml$2(title)}">
@@ -403,7 +476,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
             <div><dt>Calendar</dt><dd>${escapeHtml$2(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml$2(location)}</dd></div>` : ''}
           </dl>
-          ${locationMap ? `<section class="map"><iframe title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(locationMap)}" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></section>` : ''}
+          ${location ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml$2(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml$2(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -418,12 +491,15 @@ class MultidayCalendarEventDialog extends HTMLElement {
         h3 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
         .map { margin: 1rem 0; }
         .map iframe { display: block; width: 100%; height: 240px; border: 0; border-radius: 8px; }
+        .map .attribution { margin: 0.35rem 0 0; font-size: 0.75rem; }
         p { white-space: pre-line; overflow-wrap: anywhere; }
         button { color: var(--primary-color); background: transparent; border: 0; font: inherit; font-weight: 500; cursor: pointer; padding: 8px; }
       </style>
     `;
         this.querySelector('ha-dialog')?.addEventListener('closed', this.onClosed, { once: true });
         this.querySelector('button')?.addEventListener('click', this.onClosed, { once: true });
+        if (location)
+            void this.renderLocationMap(location, title);
     }
 }
 customElements.define('multiday-calendar-event-dialog', MultidayCalendarEventDialog);

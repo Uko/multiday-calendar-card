@@ -1,5 +1,9 @@
 import type { CalendarApiEvent } from './calendar-model';
-import { eventDetailTitle, locationMapEmbedUrl } from './event-detail-model';
+import {
+  eventDetailTitle,
+  geocodeLocation,
+  openStreetMapEmbedUrl,
+} from './event-detail-model';
 
 export type EventDetailDialogParams = {
   calendarName: string;
@@ -58,13 +62,17 @@ function safeUrl(value: string): string | undefined {
 class MultidayCalendarEventDialog extends HTMLElement {
   public hass?: HomeAssistantLike;
   private _params?: EventDetailDialogParams;
+  private _geocodeController?: AbortController;
 
   showDialog(params: EventDetailDialogParams): void {
+    this._geocodeController?.abort();
     this._params = params;
     this.render();
   }
 
   closeDialog(): boolean {
+    this._geocodeController?.abort();
+    this._geocodeController = undefined;
     this._params = undefined;
     this.innerHTML = '';
     return true;
@@ -79,13 +87,34 @@ class MultidayCalendarEventDialog extends HTMLElement {
     }));
   };
 
+  private async renderLocationMap(location: string, title: string): Promise<void> {
+    const target = this.querySelector<HTMLElement>('[data-map-location]');
+    if (!target) return;
+    const controller = new AbortController();
+    this._geocodeController = controller;
+    try {
+      const coordinates = await geocodeLocation(location, fetch, controller.signal);
+      if (controller.signal.aborted || target !== this.querySelector('[data-map-location]')) return;
+      if (!coordinates) {
+        target.remove();
+        return;
+      }
+      const mapUrl = openStreetMapEmbedUrl(coordinates);
+      target.innerHTML = `<iframe title="Map for ${escapeHtml(title)}" src="${escapeHtml(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
+    } catch (error) {
+      if ((error as DOMException).name === 'AbortError') return;
+      target.remove();
+    } finally {
+      if (this._geocodeController === controller) this._geocodeController = undefined;
+    }
+  }
+
   private render(): void {
     if (!this._params) return;
     const { calendarName, event } = this._params;
     const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
     const title = eventDetailTitle(event.summary);
     const location = event.location?.trim();
-    const locationMap = locationMapEmbedUrl(location);
     const url = event.url ? safeUrl(event.url) : undefined;
     this.innerHTML = `
       <ha-dialog open heading="${escapeHtml(title)}">
@@ -95,7 +124,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
             <div><dt>Calendar</dt><dd>${escapeHtml(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml(location)}</dd></div>` : ''}
           </dl>
-          ${locationMap ? `<section class="map"><iframe title="Map for ${escapeHtml(title)}" src="${escapeHtml(locationMap)}" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></section>` : ''}
+          ${location ? `<section class="map" data-map-location><p>Loading map…</p></section>` : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -110,12 +139,14 @@ class MultidayCalendarEventDialog extends HTMLElement {
         h3 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
         .map { margin: 1rem 0; }
         .map iframe { display: block; width: 100%; height: 240px; border: 0; border-radius: 8px; }
+        .map .attribution { margin: 0.35rem 0 0; font-size: 0.75rem; }
         p { white-space: pre-line; overflow-wrap: anywhere; }
         button { color: var(--primary-color); background: transparent; border: 0; font: inherit; font-weight: 500; cursor: pointer; padding: 8px; }
       </style>
     `;
     this.querySelector('ha-dialog')?.addEventListener('closed', this.onClosed, { once: true });
     this.querySelector('button')?.addEventListener('click', this.onClosed, { once: true });
+    if (location) void this.renderLocationMap(location, title);
   }
 }
 
