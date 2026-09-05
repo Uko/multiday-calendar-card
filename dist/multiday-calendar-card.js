@@ -475,9 +475,8 @@ class MultidayCalendarEventDialog extends HTMLElement {
         const location = event.location?.trim();
         const url = event.url ? safeUrl(event.url) : undefined;
         this.innerHTML = `
-      <ha-dialog open>
+      <ha-dialog open header-title="${escapeHtml$2(title)}">
         <div class="details" style="--calendar-color: ${safeCalendarColor(calendarColor)}">
-          <h2 class="event-title">${escapeHtml$2(title)}</h2>
           <dl>
             <div><dt>When</dt><dd>${escapeHtml$2(eventDateRange(event, locale))}</dd></div>
             <div><dt>Calendar</dt><dd>${escapeHtml$2(calendarName)}</dd></div>
@@ -490,8 +489,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
         <button slot="primaryAction" type="button">Close</button>
       </ha-dialog>
       <style>
-        .details { min-width: min(420px, 80vw); }
-        .event-title { margin: 0 0 1rem; padding: 0 0 0.5rem; border-bottom: 4px solid var(--calendar-color); color: var(--primary-text-color); font-size: 1.25rem; line-height: 1.35; overflow-wrap: anywhere; }
+        .details { min-width: min(420px, 80vw); border-top: 4px solid var(--calendar-color); }
         dl { margin: 0; }
         dl > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.75rem; margin: 0.75rem 0; }
         dt { color: var(--secondary-text-color); }
