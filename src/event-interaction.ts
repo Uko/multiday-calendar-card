@@ -1,9 +1,5 @@
 export type EventActionName = 'none' | 'more-info';
 
-/**
- * Event actions intentionally mirror Home Assistant's action-object shape so
- * hold_action and double_tap_action can be added without changing the schema.
- */
 export type EventAction = {
   action: EventActionName;
 };

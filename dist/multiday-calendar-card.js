@@ -308,6 +308,20 @@ function editorWarnings(config) {
     return warnings;
 }
 
+function eventDetailTitle(summary) {
+    return summary?.trim() || 'Untitled event';
+}
+/**
+ * A location is untrusted calendar data, so it is only ever supplied as an
+ * encoded search query rather than interpreted as a URL.
+ */
+function locationMapEmbedUrl(location) {
+    const query = location?.trim();
+    if (!query)
+        return undefined;
+    return `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed`;
+}
+
 function escapeHtml$2(value) {
     return value.replace(/[&<>'"]/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -377,7 +391,9 @@ class MultidayCalendarEventDialog extends HTMLElement {
             return;
         const { calendarName, event } = this._params;
         const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
-        const title = event.summary?.trim() || 'Untitled event';
+        const title = eventDetailTitle(event.summary);
+        const location = event.location?.trim();
+        const locationMap = locationMapEmbedUrl(location);
         const url = event.url ? safeUrl(event.url) : undefined;
         this.innerHTML = `
       <ha-dialog open heading="${escapeHtml$2(title)}">
@@ -385,8 +401,9 @@ class MultidayCalendarEventDialog extends HTMLElement {
           <dl>
             <div><dt>When</dt><dd>${escapeHtml$2(eventDateRange(event, locale))}</dd></div>
             <div><dt>Calendar</dt><dd>${escapeHtml$2(calendarName)}</dd></div>
-            ${event.location?.trim() ? `<div><dt>Location</dt><dd>${escapeHtml$2(event.location.trim())}</dd></div>` : ''}
+            ${location ? `<div><dt>Location</dt><dd>${escapeHtml$2(location)}</dd></div>` : ''}
           </dl>
+          ${locationMap ? `<section class="map"><iframe title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(locationMap)}" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></section>` : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml$2(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml$2(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -399,6 +416,8 @@ class MultidayCalendarEventDialog extends HTMLElement {
         dt { color: var(--secondary-text-color); }
         dd { margin: 0; overflow-wrap: anywhere; }
         h3 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
+        .map { margin: 1rem 0; }
+        .map iframe { display: block; width: 100%; height: 240px; border: 0; border-radius: 8px; }
         p { white-space: pre-line; overflow-wrap: anywhere; }
         button { color: var(--primary-color); background: transparent; border: 0; font: inherit; font-weight: 500; cursor: pointer; padding: 8px; }
       </style>
@@ -410,6 +429,19 @@ class MultidayCalendarEventDialog extends HTMLElement {
 customElements.define('multiday-calendar-event-dialog', MultidayCalendarEventDialog);
 
 const CARD_TYPE = 'custom:multiday-calendar-card';
+// This matches the Gauge card's interaction selector, limited to actions this
+// calendar card implements.
+const INTERACTION_SCHEMA = [
+    {
+        name: 'tap_action',
+        selector: {
+            ui_action: {
+                actions: ['more-info', 'none'],
+                default_action: 'none',
+            },
+        },
+    },
+];
 function escapeHtml$1(value) {
     return value.replace(/[&<>'"]/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -450,6 +482,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
     set hass(hass) {
         this._hass = hass;
         this.assignHassToEntityPickers();
+        this.renderInteractionEditor();
     }
     updateConfig(update, rerender = false) {
         this._config = normalizeEditorConfig({ ...this._config, ...update });
@@ -475,6 +508,20 @@ class MultidayCalendarCardEditor extends HTMLElement {
             picker.value = picker.getAttribute('value') ?? '';
         });
     }
+    renderInteractionEditor() {
+        const target = this.querySelector('[data-interaction-editor]');
+        if (!target)
+            return;
+        const editor = document.createElement('ha-form');
+        editor.hass = this._hass;
+        editor.data = { tap_action: normalizeTapAction(this._config.tap_action) };
+        editor.schema = INTERACTION_SCHEMA;
+        editor.addEventListener('value-changed', (event) => {
+            const value = event.detail.value;
+            this.updateConfig({ tap_action: value.tap_action });
+        });
+        target.replaceChildren(editor);
+    }
     updateValidation() {
         const errors = validateEditorConfig(this._config);
         const warnings = editorWarnings(this._config);
@@ -492,7 +539,6 @@ class MultidayCalendarCardEditor extends HTMLElement {
         const fixedHeight = config.height !== undefined && config.height !== null;
         const startTime = config.start_time ?? '06:00';
         const endTime = config.end_time ?? '22:00';
-        const tapAction = config.tap_action?.action ?? 'none';
         this.innerHTML = `
       <style>
         :host { display: block; }
@@ -549,7 +595,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
       </section>
       <section class="section">
         <h3>Interactions</h3>
-        <div class="field"><label>Tap action</label><select data-action="tap-action"><option value="none" ${tapAction === 'none' ? 'selected' : ''}>Do nothing</option><option value="more-info" ${tapAction === 'more-info' ? 'selected' : ''}>Show event details</option></select><div class="hint">More info opens a read-only popup for the selected calendar event. Hold and double-tap actions are reserved for a future release.</div></div>
+        <div data-interaction-editor></div>
       </section>
       <section class="section">
         <h3>Layout & density</h3>
@@ -561,6 +607,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
     `;
         this.bindEvents();
         this.assignHassToEntityPickers();
+        this.renderInteractionEditor();
         this.updateValidation();
     }
     bindEvents() {
@@ -578,9 +625,6 @@ class MultidayCalendarCardEditor extends HTMLElement {
         this.querySelector('[data-action="fixed-height"]')?.addEventListener('change', (event) => {
             const fixed = event.target.checked;
             this.updateConfig({ height: fixed ? 480 : null }, true);
-        });
-        this.querySelector('[data-action="tap-action"]')?.addEventListener('change', (event) => {
-            this.updateConfig({ tap_action: { action: event.target.value } });
         });
         this.querySelectorAll('[data-config]').forEach((field) => field.addEventListener('change', () => {
             const key = field.dataset.config;

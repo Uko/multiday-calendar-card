@@ -1,4 +1,5 @@
 import type { CalendarApiEvent } from './calendar-model';
+import { eventDetailTitle, locationMapEmbedUrl } from './event-detail-model';
 
 export type EventDetailDialogParams = {
   calendarName: string;
@@ -82,7 +83,9 @@ class MultidayCalendarEventDialog extends HTMLElement {
     if (!this._params) return;
     const { calendarName, event } = this._params;
     const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
-    const title = event.summary?.trim() || 'Untitled event';
+    const title = eventDetailTitle(event.summary);
+    const location = event.location?.trim();
+    const locationMap = locationMapEmbedUrl(location);
     const url = event.url ? safeUrl(event.url) : undefined;
     this.innerHTML = `
       <ha-dialog open heading="${escapeHtml(title)}">
@@ -90,8 +93,9 @@ class MultidayCalendarEventDialog extends HTMLElement {
           <dl>
             <div><dt>When</dt><dd>${escapeHtml(eventDateRange(event, locale))}</dd></div>
             <div><dt>Calendar</dt><dd>${escapeHtml(calendarName)}</dd></div>
-            ${event.location?.trim() ? `<div><dt>Location</dt><dd>${escapeHtml(event.location.trim())}</dd></div>` : ''}
+            ${location ? `<div><dt>Location</dt><dd>${escapeHtml(location)}</dd></div>` : ''}
           </dl>
+          ${locationMap ? `<section class="map"><iframe title="Map for ${escapeHtml(title)}" src="${escapeHtml(locationMap)}" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></section>` : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -104,6 +108,8 @@ class MultidayCalendarEventDialog extends HTMLElement {
         dt { color: var(--secondary-text-color); }
         dd { margin: 0; overflow-wrap: anywhere; }
         h3 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
+        .map { margin: 1rem 0; }
+        .map iframe { display: block; width: 100%; height: 240px; border: 0; border-radius: 8px; }
         p { white-space: pre-line; overflow-wrap: anywhere; }
         button { color: var(--primary-color); background: transparent; border: 0; font: inherit; font-weight: 500; cursor: pointer; padding: 8px; }
       </style>

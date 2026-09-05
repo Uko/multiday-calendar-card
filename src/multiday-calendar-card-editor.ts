@@ -8,6 +8,7 @@ import {
   type CalendarEditorConfig,
   type EditorConfig,
 } from './editor-model';
+import { normalizeTapAction, type EventAction } from './event-interaction';
 
 type HomeAssistantLike = {
   states?: Record<string, unknown>;
@@ -19,7 +20,27 @@ type EntityPicker = HTMLElement & {
   includeDomains?: string[];
 };
 
+type ActionEditorForm = HTMLElement & {
+  hass?: HomeAssistantLike;
+  data?: { tap_action?: EventAction };
+  schema?: unknown;
+};
+
 const CARD_TYPE = 'custom:multiday-calendar-card';
+
+// This matches the Gauge card's interaction selector, limited to actions this
+// calendar card implements.
+const INTERACTION_SCHEMA = [
+  {
+    name: 'tap_action',
+    selector: {
+      ui_action: {
+        actions: ['more-info', 'none'],
+        default_action: 'none',
+      },
+    },
+  },
+];
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -63,6 +84,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
   set hass(hass: HomeAssistantLike) {
     this._hass = hass;
     this.assignHassToEntityPickers();
+    this.renderInteractionEditor();
   }
 
   private updateConfig(update: Partial<EditorConfig>, rerender = false): void {
@@ -93,6 +115,20 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     });
   }
 
+  private renderInteractionEditor(): void {
+    const target = this.querySelector<HTMLElement>('[data-interaction-editor]');
+    if (!target) return;
+    const editor = document.createElement('ha-form') as ActionEditorForm;
+    editor.hass = this._hass;
+    editor.data = { tap_action: normalizeTapAction(this._config.tap_action) };
+    editor.schema = INTERACTION_SCHEMA;
+    editor.addEventListener('value-changed', (event) => {
+      const value = (event as CustomEvent<{ value: { tap_action?: EventAction } }>).detail.value;
+      this.updateConfig({ tap_action: value.tap_action });
+    });
+    target.replaceChildren(editor);
+  }
+
   private updateValidation(): void {
     const errors = validateEditorConfig(this._config);
     const warnings = editorWarnings(this._config);
@@ -110,7 +146,6 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     const fixedHeight = config.height !== undefined && config.height !== null;
     const startTime = config.start_time ?? '06:00';
     const endTime = config.end_time ?? '22:00';
-    const tapAction = config.tap_action?.action ?? 'none';
 
     this.innerHTML = `
       <style>
@@ -168,7 +203,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
       </section>
       <section class="section">
         <h3>Interactions</h3>
-        <div class="field"><label>Tap action</label><select data-action="tap-action"><option value="none" ${tapAction === 'none' ? 'selected' : ''}>Do nothing</option><option value="more-info" ${tapAction === 'more-info' ? 'selected' : ''}>Show event details</option></select><div class="hint">More info opens a read-only popup for the selected calendar event. Hold and double-tap actions are reserved for a future release.</div></div>
+        <div data-interaction-editor></div>
       </section>
       <section class="section">
         <h3>Layout & density</h3>
@@ -180,6 +215,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     `;
     this.bindEvents();
     this.assignHassToEntityPickers();
+    this.renderInteractionEditor();
     this.updateValidation();
   }
 
@@ -198,9 +234,6 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     this.querySelector('[data-action="fixed-height"]')?.addEventListener('change', (event) => {
       const fixed = (event.target as HTMLInputElement).checked;
       this.updateConfig({ height: fixed ? 480 : null }, true);
-    });
-    this.querySelector<HTMLSelectElement>('[data-action="tap-action"]')?.addEventListener('change', (event) => {
-      this.updateConfig({ tap_action: { action: (event.target as HTMLSelectElement).value as 'none' | 'more-info' } });
     });
     this.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-config]').forEach((field) => field.addEventListener('change', () => {
       const key = field.dataset.config as keyof EditorConfig;
