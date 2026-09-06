@@ -55,6 +55,8 @@ type MultiDayCalendarCardConfig = {
   show_now_line?: boolean;
   /** Maximum concurrent timed-event lanes per overlap group. */
   max_simultaneous_events?: number;
+  /** Skip Saturday and Sunday so `days` counts school days only (Mon–Fri). */
+  hide_weekends?: boolean;
 };
 
 type LoadedEvent = {
@@ -84,6 +86,7 @@ const DEFAULT_CONFIG: Required<
   hour_height: 56,
   show_now_line: true,
   max_simultaneous_events: 3,
+  hide_weekends: false,
   calendars: [],
 };
 
@@ -296,7 +299,7 @@ class MultiDayCalendarCard extends HTMLElement {
   private async loadEvents(force = false): Promise<void> {
     if (!this._config || !this._hass) return;
 
-    const range = eventRangeForDays(new Date(), this._config.days);
+    const range = eventRangeForDays(new Date(), this._config.days, this._config.hide_weekends);
     const key = JSON.stringify({
       calendars: this._config.calendars,
       start: range.start.toISOString(),
@@ -345,7 +348,7 @@ class MultiDayCalendarCard extends HTMLElement {
 
     const config = this._config;
     const now = new Date();
-    const range = eventRangeForDays(now, config.days);
+    const range = eventRangeForDays(now, config.days, config.hide_weekends);
     const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
     const startMinutes = parseTime(config.start_time)!;
     const endMinutes = parseTime(config.end_time)!;
@@ -365,11 +368,17 @@ class MultiDayCalendarCard extends HTMLElement {
       minute: '2-digit',
     });
 
-    const days = Array.from({ length: config.days }, (_, index) => {
-      const day = new Date(range.start);
-      day.setDate(day.getDate() + index);
-      return day;
-    });
+    const days: Date[] = [];
+    {
+      const cursor = new Date(range.start);
+      for (let index = 0; index < 14 && days.length < config.days; index++) {
+        const dow = cursor.getDay();
+        if (!config.hide_weekends || (dow !== 0 && dow !== 6)) {
+          days.push(new Date(cursor));
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
     const dayHeaderHeight = calendarHeaderHeight(
       Math.max(
         0,
