@@ -172,7 +172,11 @@ export function allDayEventPlacementForDay(
   return { summary: event.summary?.trim() || 'Untitled event' };
 }
 
-export function eventRangeForDays(now: Date, days: number): {
+export function eventRangeForDays(
+  now: Date,
+  days: number,
+  hideWeekends = false,
+): {
   start: Date;
   end: Date;
 } {
@@ -180,6 +184,19 @@ export function eventRangeForDays(now: Date, days: number): {
   start.setHours(0, 0, 0, 0);
 
   const end = new Date(start);
+
+  if (hideWeekends) {
+    // Collect `days` weekdays (Mon–Fri) by walking forward, skipping Sat/Sun,
+    // so the fetch range always spans enough school days.
+    let collected = 0;
+    while (collected < days) {
+      const dow = end.getDay();
+      if (dow !== 0 && dow !== 6) collected++;
+      end.setDate(end.getDate() + 1);
+    }
+    return { start, end };
+  }
+
   end.setDate(end.getDate() + days);
 
   return { start, end };

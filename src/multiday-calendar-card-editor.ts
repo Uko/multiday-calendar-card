@@ -163,6 +163,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
           <div class="field"><label>End time</label><select data-config="end_time">${parseTime(endTime)! % 60 !== 0 ? `<option value="${endTime}" selected>${endTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${endTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
         </div>
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
+        <label class="toggle"><input data-config="hide_weekends" type="checkbox" ${config.hide_weekends === true ? 'checked' : ''}> Hide weekends (Mon–Fri only)</label>
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <section class="section">
