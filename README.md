@@ -100,7 +100,9 @@ calendars:
 | `show_now_line` | `true` | Show or hide the current-time line. |
 | `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. |
 | `tap_action` | `{ action: none }` | Action for a tapped displayed event. Use `{ action: more-info }` to open a read-only event popup; only `none` and `more-info` are currently supported. |
-| `show_location_map` | `false` | When enabled, opening an event with a location sends that location to Nominatim and displays the resulting OpenStreetMap map. |
+| `show_location_map` | `false` | Explicit consent to send an event location to the selected external map/geocoding provider when its detail popup is opened. This has no effect unless `location_map_provider` is set. |
+| `location_map_provider` | unset | `google_maps` embeds Google Maps, which resolves the location itself. `osm_nominatim` sends the location to Nominatim, then renders an OpenStreetMap map. Leave unset to make no external map/location request. |
+| `custom_nominatim_url` | unset | Optional absolute HTTP(S) URL of a compatible Nominatim endpoint. Used only with `location_map_provider: osm_nominatim`; the public Nominatim endpoint is used when omitted. |
 | `hour_height` | `56` | Timeline height in pixels per visible hour. Used when `height` is omitted. |
 | `height` | unset | Fixed outer-card height in pixels. It takes precedence over `hour_height` and compresses the timeline without hiding events. |
 | `refresh_interval` | `30` | Minutes between calendar refreshes. It must be a positive number. |

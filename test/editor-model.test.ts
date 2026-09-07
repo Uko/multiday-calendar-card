@@ -112,6 +112,23 @@ test('validateEditorConfig requires the optional location map setting to be bool
   ]);
 });
 
+test('validateEditorConfig accepts a known location-map provider and rejects unsafe provider settings', () => {
+  const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
+
+  assert.deepEqual(validateEditorConfig({
+    ...base,
+    show_location_map: true,
+    location_map_provider: 'osm_nominatim',
+    custom_nominatim_url: 'https://maps.example.test/search',
+  }), []);
+  assert.deepEqual(validateEditorConfig({ ...base, location_map_provider: 'apple' }), [
+    'Map provider must be Google Maps or OpenStreetMap + Nominatim.',
+  ]);
+  assert.deepEqual(validateEditorConfig({ ...base, custom_nominatim_url: 'not-a-url' }), [
+    'Custom Nominatim URL must be an absolute HTTP(S) URL.',
+  ]);
+});
+
 test('validateEditorConfig rejects incomplete calendar and invalid view/density values', () => {
   assert.deepEqual(validateEditorConfig({
     type: 'custom:multiday-calendar-card',

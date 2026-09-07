@@ -238,6 +238,73 @@ function normalizeTapAction(value) {
     return value === undefined ? { ...DEFAULT_TAP_ACTION } : { action: value.action };
 }
 
+const LOCATION_MAP_PROVIDERS = ['google_maps', 'osm_nominatim'];
+const NOMINATIM_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
+function eventDetailTitle(summary) {
+    return summary?.trim() || 'Untitled event';
+}
+function nominatimSearchUrl(location, endpoint = NOMINATIM_SEARCH_ENDPOINT) {
+    const url = new URL(endpoint);
+    if (url.pathname === '/' || url.pathname === '')
+        url.pathname = '/search';
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('limit', '1');
+    url.searchParams.set('q', location);
+    return url.href;
+}
+function googleMapsEmbedUrl(location) {
+    const url = new URL('https://www.google.com/maps');
+    url.searchParams.set('q', location);
+    url.searchParams.set('output', 'embed');
+    return url.href;
+}
+function finiteCoordinate(value, minimum, maximum) {
+    const coordinate = typeof value === 'string' ? Number(value) : undefined;
+    return coordinate !== undefined && Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum
+        ? coordinate
+        : undefined;
+}
+function parseBoundingBox(value) {
+    if (!Array.isArray(value) || value.length !== 4)
+        return undefined;
+    const south = finiteCoordinate(value[0], -90, 90);
+    const north = finiteCoordinate(value[1], -90, 90);
+    const west = finiteCoordinate(value[2], -180, 180);
+    const east = finiteCoordinate(value[3], -180, 180);
+    return south === undefined || north === undefined || west === undefined || east === undefined || south > north || west > east
+        ? undefined
+        : [south, north, west, east];
+}
+async function geocodeLocation(location, endpoint, fetcher = fetch, signal) {
+    const response = await fetcher(nominatimSearchUrl(location, endpoint), { signal });
+    if (!response.ok)
+        return undefined;
+    const results = await response.json();
+    if (!Array.isArray(results) || !results[0] || typeof results[0] !== 'object')
+        return undefined;
+    const result = results[0];
+    const latitude = finiteCoordinate(result.lat, -90, 90);
+    const longitude = finiteCoordinate(result.lon, -180, 180);
+    if (latitude === undefined || longitude === undefined)
+        return undefined;
+    return { latitude, longitude, boundingBox: parseBoundingBox(result.boundingbox) };
+}
+function openStreetMapEmbedUrl(location) {
+    const latitudePadding = 0.006;
+    const longitudePadding = 0.01;
+    const [south, north, west, east] = location.boundingBox ?? [
+        Math.max(-90, location.latitude - latitudePadding),
+        Math.min(90, location.latitude + latitudePadding),
+        Math.max(-180, location.longitude - longitudePadding),
+        Math.min(180, location.longitude + longitudePadding),
+    ];
+    const url = new URL('https://www.openstreetmap.org/export/embed.html');
+    url.searchParams.set('bbox', `${west},${south},${east},${north}`);
+    url.searchParams.set('layer', 'mapnik');
+    url.searchParams.set('marker', `${location.latitude},${location.longitude}`);
+    return url.href;
+}
+
 const GRID_INTERVALS = [15, 20, 30, 60, 120];
 function parseTime(value) {
     if (value === undefined)
@@ -256,6 +323,15 @@ function normalizeEditorConfig(config) {
         ...config,
         calendars: (config.calendars ?? []).map((calendar) => ({ ...calendar })),
     };
+}
+function isAbsoluteHttpUrl(value) {
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' || url.protocol === 'http:';
+    }
+    catch {
+        return false;
+    }
 }
 function validateEditorConfig(config) {
     const errors = [];
@@ -296,6 +372,13 @@ function validateEditorConfig(config) {
     if (config.show_location_map !== undefined && typeof config.show_location_map !== 'boolean') {
         errors.push('Show location map must be true or false.');
     }
+    if (config.location_map_provider !== undefined && !LOCATION_MAP_PROVIDERS.includes(config.location_map_provider)) {
+        errors.push('Map provider must be Google Maps or OpenStreetMap + Nominatim.');
+    }
+    if (config.custom_nominatim_url !== undefined &&
+        (typeof config.custom_nominatim_url !== 'string' || !isAbsoluteHttpUrl(config.custom_nominatim_url))) {
+        errors.push('Custom Nominatim URL must be an absolute HTTP(S) URL.');
+    }
     return errors;
 }
 function editorWarnings(config) {
@@ -311,64 +394,9 @@ function editorWarnings(config) {
     return warnings;
 }
 
-const NOMINATIM_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
-function eventDetailTitle(summary) {
-    return summary?.trim() || 'Untitled event';
-}
-function nominatimSearchUrl(location) {
-    const url = new URL(NOMINATIM_SEARCH_ENDPOINT);
-    url.searchParams.set('format', 'jsonv2');
-    url.searchParams.set('limit', '1');
-    url.searchParams.set('q', location);
-    return url.href;
-}
-function finiteCoordinate(value, minimum, maximum) {
-    const coordinate = typeof value === 'string' ? Number(value) : undefined;
-    return coordinate !== undefined && Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum
-        ? coordinate
-        : undefined;
-}
-function parseBoundingBox(value) {
-    if (!Array.isArray(value) || value.length !== 4)
-        return undefined;
-    const south = finiteCoordinate(value[0], -90, 90);
-    const north = finiteCoordinate(value[1], -90, 90);
-    const west = finiteCoordinate(value[2], -180, 180);
-    const east = finiteCoordinate(value[3], -180, 180);
-    return south === undefined || north === undefined || west === undefined || east === undefined || south > north || west > east
-        ? undefined
-        : [south, north, west, east];
-}
-async function geocodeLocation(location, fetcher = fetch, signal) {
-    const response = await fetcher(nominatimSearchUrl(location), { signal });
-    if (!response.ok)
-        return undefined;
-    const results = await response.json();
-    if (!Array.isArray(results) || !results[0] || typeof results[0] !== 'object')
-        return undefined;
-    const result = results[0];
-    const latitude = finiteCoordinate(result.lat, -90, 90);
-    const longitude = finiteCoordinate(result.lon, -180, 180);
-    if (latitude === undefined || longitude === undefined)
-        return undefined;
-    return { latitude, longitude, boundingBox: parseBoundingBox(result.boundingbox) };
-}
-function openStreetMapEmbedUrl(location) {
-    const latitudePadding = 0.006;
-    const longitudePadding = 0.01;
-    const [south, north, west, east] = location.boundingBox ?? [
-        Math.max(-90, location.latitude - latitudePadding),
-        Math.min(90, location.latitude + latitudePadding),
-        Math.max(-180, location.longitude - longitudePadding),
-        Math.min(180, location.longitude + longitudePadding),
-    ];
-    const url = new URL('https://www.openstreetmap.org/export/embed.html');
-    url.searchParams.set('bbox', `${west},${south},${east},${north}`);
-    url.searchParams.set('layer', 'mapnik');
-    url.searchParams.set('marker', `${location.latitude},${location.longitude}`);
-    return url.href;
-}
-
+const NOMINATIM_LOOKUP_INTERVAL_MS = 1_000;
+const geocodeCache = new Map();
+let lastNominatimLookupMs = 0;
 function escapeHtml$2(value) {
     return value.replace(/[&<>'"]/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -439,39 +467,54 @@ class MultidayCalendarEventDialog extends HTMLElement {
         this.innerHTML = '';
         return true;
     }
-    async renderLocationMap(location, title) {
+    async renderLocationMap(location, title, provider, customNominatimUrl) {
         const target = this.querySelector('[data-map-location]');
         if (!target)
             return;
-        const controller = new AbortController();
-        this._geocodeController = controller;
-        try {
-            const coordinates = await geocodeLocation(location, fetch, controller.signal);
-            if (controller.signal.aborted || target !== this.querySelector('[data-map-location]'))
-                return;
-            if (!coordinates) {
+        if (provider === 'google_maps') {
+            const mapUrl = googleMapsEmbedUrl(location);
+            target.hidden = false;
+            target.innerHTML = `<iframe title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(mapUrl)}" loading="lazy"></iframe>`;
+            return;
+        }
+        const cacheKey = `${customNominatimUrl ?? ''}\u0000${location}`;
+        const cached = geocodeCache.get(cacheKey);
+        let coordinates = cached;
+        if (!geocodeCache.has(cacheKey)) {
+            if (Date.now() - lastNominatimLookupMs < NOMINATIM_LOOKUP_INTERVAL_MS) {
                 target.remove();
                 return;
             }
-            const mapUrl = openStreetMapEmbedUrl(coordinates);
-            const themeClass = this._params?.isDarkTheme ? 'dark-map' : 'light-map';
-            target.hidden = false;
-            target.innerHTML = `<iframe class="${themeClass}" title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml$2(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
+            const controller = new AbortController();
+            this._geocodeController = controller;
+            try {
+                lastNominatimLookupMs = Date.now();
+                coordinates = await geocodeLocation(location, customNominatimUrl, fetch, controller.signal);
+                geocodeCache.set(cacheKey, coordinates);
+            }
+            catch (error) {
+                if (error.name === 'AbortError')
+                    return;
+                geocodeCache.set(cacheKey, undefined);
+            }
+            finally {
+                if (this._geocodeController === controller)
+                    this._geocodeController = undefined;
+            }
         }
-        catch (error) {
-            if (error.name === 'AbortError')
-                return;
+        if (target !== this.querySelector('[data-map-location]') || !coordinates) {
             target.remove();
+            return;
         }
-        finally {
-            if (this._geocodeController === controller)
-                this._geocodeController = undefined;
-        }
+        const mapUrl = openStreetMapEmbedUrl(coordinates);
+        const themeClass = this._params?.isDarkTheme ? 'dark-map' : 'light-map';
+        target.hidden = false;
+        target.innerHTML = `<iframe class="${themeClass}" title="Map for ${escapeHtml$2(title)}" src="${escapeHtml$2(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml$2(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
     }
     render() {
         if (!this._params)
             return;
-        const { calendarName, calendarColor, showLocationMap, event } = this._params;
+        const { calendarName, calendarColor, showLocationMap, locationMapProvider, customNominatimUrl, event } = this._params;
         const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
         const title = eventDetailTitle(event.summary);
         const location = event.location?.trim();
@@ -484,7 +527,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
             <div><dt>Calendar</dt><dd>${escapeHtml$2(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml$2(location)}</dd></div>` : ''}
           </dl>
-          ${location && showLocationMap ? '<section class="map" data-map-location hidden></section>' : ''}
+          ${location && showLocationMap && locationMapProvider ? '<section class="map" data-map-location hidden></section>' : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml$2(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml$2(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -507,38 +550,54 @@ class MultidayCalendarEventDialog extends HTMLElement {
     `;
         this.querySelector('ha-dialog')?.addEventListener('closed', this.onClosed, { once: true });
         this.querySelector('button')?.addEventListener('click', this.onClosed, { once: true });
-        if (location && showLocationMap)
-            void this.renderLocationMap(location, title);
+        if (location && showLocationMap && locationMapProvider) {
+            void this.renderLocationMap(location, title, locationMapProvider, customNominatimUrl);
+        }
     }
 }
 customElements.define('multiday-calendar-event-dialog', MultidayCalendarEventDialog);
 
 const CARD_TYPE = 'custom:multiday-calendar-card';
-// Match the Gauge card's native expandable interactions editor while exposing
-// only the calendar card actions it actually implements.
-const INTERACTION_SCHEMA = [
-    {
-        name: 'interactions',
-        type: 'expandable',
-        title: 'Interactions',
-        icon: 'mdi:gesture-tap',
-        flatten: true,
-        expanded: true,
-        schema: [
-            {
-                name: 'tap_action',
-                selector: {
-                    ui_action: {
-                        actions: ['more-info', 'none'],
-                        default_action: 'none',
+function interactionSchema(showMoreInfo, showLocationMap, provider) {
+    const schema = [
+        {
+            name: 'interactions',
+            type: 'expandable',
+            title: 'Interactions',
+            icon: 'mdi:gesture-tap',
+            flatten: true,
+            expanded: true,
+            schema: [
+                {
+                    name: 'tap_action',
+                    selector: {
+                        ui_action: {
+                            actions: ['more-info', 'none'],
+                            default_action: 'none',
+                        },
                     },
                 },
-            },
-            { name: '', type: 'divider' },
-            { name: 'show_location_map', selector: { boolean: {} } },
-        ],
-    },
-];
+                ...(showMoreInfo ? [{ name: '', type: 'divider' }, { name: 'show_location_map', selector: { boolean: {} } }] : []),
+                ...(showMoreInfo && showLocationMap ? [{
+                        name: 'location_map_provider',
+                        selector: {
+                            select: {
+                                options: [
+                                    { value: 'google_maps', label: 'Google Maps' },
+                                    { value: 'osm_nominatim', label: 'OpenStreetMap + Nominatim' },
+                                ],
+                            },
+                        },
+                    }] : []),
+                ...(showMoreInfo && showLocationMap && provider === 'osm_nominatim' ? [{
+                        name: 'custom_nominatim_url',
+                        selector: { text: { type: 'url' } },
+                    }] : []),
+            ],
+        },
+    ];
+    return schema;
+}
 function escapeHtml$1(value) {
     return value.replace(/[&<>'"]/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -614,22 +673,30 @@ class MultidayCalendarCardEditor extends HTMLElement {
         editor.data = {
             tap_action: this._config.tap_action,
             show_location_map: this._config.show_location_map === true,
+            location_map_provider: this._config.location_map_provider,
+            custom_nominatim_url: this._config.custom_nominatim_url,
         };
-        editor.schema = INTERACTION_SCHEMA;
+        editor.schema = interactionSchema(this._config.tap_action?.action === 'more-info', this._config.show_location_map === true, this._config.location_map_provider);
         editor.computeLabel = (schema) => {
             if (schema.name === 'tap_action')
                 return 'Tap behaviour (optional)';
             if (schema.name === 'show_location_map') {
-                return 'Show a map for event locations (coordinates will be resolved with Nominatim service)';
+                return 'Resolve event location with an external geocoding provider (your location data will be sent to an external service to convert the event address into coordinates)';
             }
+            if (schema.name === 'location_map_provider')
+                return 'Map provider';
+            if (schema.name === 'custom_nominatim_url')
+                return 'Custom Nominatim URL (optional)';
             return schema.name;
         };
         editor.addEventListener('value-changed', (event) => {
             const value = event.detail.value;
             this.updateConfig({
-                tap_action: value.tap_action,
+                tap_action: value.tap_action ?? this._config.tap_action,
                 show_location_map: value.show_location_map === true,
-            });
+                location_map_provider: value.location_map_provider ?? this._config.location_map_provider,
+                custom_nominatim_url: value.custom_nominatim_url?.trim() || undefined,
+            }, true);
         });
         target.replaceChildren(editor);
     }
@@ -774,6 +841,8 @@ const DEFAULT_CONFIG = {
     max_simultaneous_events: 3,
     tap_action: { action: 'none' },
     show_location_map: false,
+    location_map_provider: undefined,
+    custom_nominatim_url: undefined,
     calendars: [],
 };
 function escapeHtml(value) {
@@ -790,6 +859,22 @@ function escapeHtml(value) {
 }
 function safeColor(color) {
     return color && /^#[0-9a-f]{6}$/i.test(color) ? color : 'var(--primary-color)';
+}
+function locationMapProvider(value) {
+    return typeof value === 'string' && LOCATION_MAP_PROVIDERS.includes(value)
+        ? value
+        : undefined;
+}
+function customNominatimUrl(value) {
+    if (typeof value !== 'string')
+        return undefined;
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : undefined;
+    }
+    catch {
+        return undefined;
+    }
 }
 function sameLocalDay(left, right) {
     return (left.getFullYear() === right.getFullYear() &&
@@ -881,6 +966,9 @@ class MultiDayCalendarCard extends HTMLElement {
             hour_height: hourHeight,
             calendars,
             tap_action: normalizeTapAction(config.tap_action),
+            show_location_map: config.show_location_map === true,
+            location_map_provider: locationMapProvider(config.location_map_provider),
+            custom_nominatim_url: customNominatimUrl(config.custom_nominatim_url),
         };
         this._requestKey = undefined;
         this.cancelRecoveryRefresh();
@@ -995,10 +1083,14 @@ class MultiDayCalendarCard extends HTMLElement {
         const loadedEvent = this._events[eventIndex];
         if (!loadedEvent)
             return;
+        const locationMapEnabled = this._config?.show_location_map === true &&
+            this._config.location_map_provider !== undefined;
         const dialogParams = {
             calendarName: loadedEvent.calendar.label ?? loadedEvent.calendar.entity,
             calendarColor: safeColor(loadedEvent.calendar.color),
-            showLocationMap: this._config?.show_location_map ?? false,
+            showLocationMap: locationMapEnabled,
+            locationMapProvider: this._config?.location_map_provider,
+            customNominatimUrl: this._config?.custom_nominatim_url,
             isDarkTheme: this._hass?.themes?.darkMode === true,
             event: loadedEvent.event,
         };

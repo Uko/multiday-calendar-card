@@ -1,4 +1,5 @@
 import { validateTapAction, type EventAction } from './event-interaction';
+import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
 
 export type CalendarEditorConfig = {
   entity: string;
@@ -21,6 +22,8 @@ export type EditorConfig = {
   max_simultaneous_events?: number;
   tap_action?: EventAction;
   show_location_map?: boolean;
+  location_map_provider?: LocationMapProvider;
+  custom_nominatim_url?: string;
   [key: string]: unknown;
 };
 
@@ -43,6 +46,15 @@ export function normalizeEditorConfig(config: EditorConfig): EditorConfig {
     ...config,
     calendars: (config.calendars ?? []).map((calendar) => ({ ...calendar })),
   };
+}
+
+function isAbsoluteHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 export function validateEditorConfig(config: EditorConfig): string[] {
@@ -82,6 +94,13 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   if (tapActionError) errors.push(tapActionError);
   if (config.show_location_map !== undefined && typeof config.show_location_map !== 'boolean') {
     errors.push('Show location map must be true or false.');
+  }
+  if (config.location_map_provider !== undefined && !LOCATION_MAP_PROVIDERS.includes(config.location_map_provider)) {
+    errors.push('Map provider must be Google Maps or OpenStreetMap + Nominatim.');
+  }
+  if (config.custom_nominatim_url !== undefined &&
+      (typeof config.custom_nominatim_url !== 'string' || !isAbsoluteHttpUrl(config.custom_nominatim_url))) {
+    errors.push('Custom Nominatim URL must be an absolute HTTP(S) URL.');
   }
 
   return errors;

@@ -22,38 +22,58 @@ type EntityPicker = HTMLElement & {
 
 type ActionEditorForm = HTMLElement & {
   hass?: HomeAssistantLike;
-  data?: { tap_action?: EventAction; show_location_map?: boolean };
+  data?: {
+    tap_action?: EventAction;
+    show_location_map?: boolean;
+    location_map_provider?: 'google_maps' | 'osm_nominatim';
+    custom_nominatim_url?: string;
+  };
   schema?: unknown;
   computeLabel?: (schema: { name: string }) => string;
 };
 
 const CARD_TYPE = 'custom:multiday-calendar-card';
 
-// Match the Gauge card's native expandable interactions editor while exposing
-// only the calendar card actions it actually implements.
-const INTERACTION_SCHEMA = [
-  {
-    name: 'interactions',
-    type: 'expandable',
-    title: 'Interactions',
-    icon: 'mdi:gesture-tap',
-    flatten: true,
-    expanded: true,
-    schema: [
-      {
-        name: 'tap_action',
-        selector: {
-          ui_action: {
-            actions: ['more-info', 'none'],
-            default_action: 'none',
+function interactionSchema(showMoreInfo: boolean, showLocationMap: boolean, provider?: string): unknown[] {
+  const schema: unknown[] = [
+    {
+      name: 'interactions',
+      type: 'expandable',
+      title: 'Interactions',
+      icon: 'mdi:gesture-tap',
+      flatten: true,
+      expanded: true,
+      schema: [
+        {
+          name: 'tap_action',
+          selector: {
+            ui_action: {
+              actions: ['more-info', 'none'],
+              default_action: 'none',
+            },
           },
         },
-      },
-      { name: '', type: 'divider' },
-      { name: 'show_location_map', selector: { boolean: {} } },
-    ],
-  },
-];
+        ...(showMoreInfo ? [{ name: '', type: 'divider' }, { name: 'show_location_map', selector: { boolean: {} } }] : []),
+        ...(showMoreInfo && showLocationMap ? [{
+          name: 'location_map_provider',
+          selector: {
+            select: {
+              options: [
+                { value: 'google_maps', label: 'Google Maps' },
+                { value: 'osm_nominatim', label: 'OpenStreetMap + Nominatim' },
+              ],
+            },
+          },
+        }] : []),
+        ...(showMoreInfo && showLocationMap && provider === 'osm_nominatim' ? [{
+          name: 'custom_nominatim_url',
+          selector: { text: { type: 'url' } },
+        }] : []),
+      ],
+    },
+  ];
+  return schema;
+}
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -136,21 +156,38 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     editor.data = {
       tap_action: this._config.tap_action,
       show_location_map: this._config.show_location_map === true,
+      location_map_provider: this._config.location_map_provider,
+      custom_nominatim_url: this._config.custom_nominatim_url,
     };
-    editor.schema = INTERACTION_SCHEMA;
+    editor.schema = interactionSchema(
+      this._config.tap_action?.action === 'more-info',
+      this._config.show_location_map === true,
+      this._config.location_map_provider,
+    );
     editor.computeLabel = (schema) => {
       if (schema.name === 'tap_action') return 'Tap behaviour (optional)';
       if (schema.name === 'show_location_map') {
-        return 'Show a map for event locations (coordinates will be resolved with Nominatim service)';
+        return 'Resolve event location with an external geocoding provider (your location data will be sent to an external service to convert the event address into coordinates)';
       }
+      if (schema.name === 'location_map_provider') return 'Map provider';
+      if (schema.name === 'custom_nominatim_url') return 'Custom Nominatim URL (optional)';
       return schema.name;
     };
     editor.addEventListener('value-changed', (event) => {
-      const value = (event as CustomEvent<{ value: { tap_action?: EventAction; show_location_map?: boolean } }>).detail.value;
+      const value = (event as CustomEvent<{
+        value: {
+          tap_action?: EventAction;
+          show_location_map?: boolean;
+          location_map_provider?: 'google_maps' | 'osm_nominatim';
+          custom_nominatim_url?: string;
+        };
+      }>).detail.value;
       this.updateConfig({
-        tap_action: value.tap_action,
+        tap_action: value.tap_action ?? this._config.tap_action,
         show_location_map: value.show_location_map === true,
-      });
+        location_map_provider: value.location_map_provider ?? this._config.location_map_provider,
+        custom_nominatim_url: value.custom_nominatim_url?.trim() || undefined,
+      }, true);
     });
     target.replaceChildren(editor);
   }

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   eventDetailTitle,
   geocodeLocation,
+  googleMapsEmbedUrl,
   nominatimSearchUrl,
   openStreetMapEmbedUrl,
 } from '../src/event-detail-model';
@@ -23,8 +24,23 @@ test('Nominatim lookups use a single encoded free-form query', () => {
   assert.equal(url.searchParams.get('q'), 'Central Station & café');
 });
 
+test('Nominatim lookups use a configured custom endpoint when supplied', () => {
+  const url = new URL(nominatimSearchUrl('Central Station & café', 'https://maps.example.test/nominatim/search'));
+  assert.equal(url.origin, 'https://maps.example.test');
+  assert.equal(url.pathname, '/nominatim/search');
+  assert.equal(url.searchParams.get('q'), 'Central Station & café');
+});
+
+test('Google Maps embeds resolve the event location without a geocoding request', () => {
+  const url = new URL(googleMapsEmbedUrl('Central Station & café'));
+  assert.equal(url.origin, 'https://www.google.com');
+  assert.equal(url.pathname, '/maps');
+  assert.equal(url.searchParams.get('q'), 'Central Station & café');
+  assert.equal(url.searchParams.get('output'), 'embed');
+});
+
 test('Nominatim coordinates become an OpenStreetMap marker map', async () => {
-  const location = await geocodeLocation('Example venue', async () => ({
+  const location = await geocodeLocation('Example venue', undefined, async () => ({
     ok: true,
     json: async () => [{
       lat: '52.520008',
@@ -45,7 +61,7 @@ test('Nominatim coordinates become an OpenStreetMap marker map', async () => {
 });
 
 test('invalid Nominatim responses do not create a map', async () => {
-  assert.equal(await geocodeLocation('Unknown', async () => ({ ok: true, json: async () => [] })), undefined);
-  assert.equal(await geocodeLocation('Unavailable', async () => ({ ok: false, json: async () => [] })), undefined);
-  assert.equal(await geocodeLocation('Invalid', async () => ({ ok: true, json: async () => [{ lat: 'no', lon: '13' }] })), undefined);
+  assert.equal(await geocodeLocation('Unknown', undefined, async () => ({ ok: true, json: async () => [] })), undefined);
+  assert.equal(await geocodeLocation('Unavailable', undefined, async () => ({ ok: false, json: async () => [] })), undefined);
+  assert.equal(await geocodeLocation('Invalid', undefined, async () => ({ ok: true, json: async () => [{ lat: 'no', lon: '13' }] })), undefined);
 });

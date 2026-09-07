@@ -18,6 +18,7 @@ import {
 import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
 import { parseTime } from './editor-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
+import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
 import type { EventDetailDialogParams } from './multiday-calendar-event-dialog';
 import './multiday-calendar-event-dialog';
 import './multiday-calendar-card-editor';
@@ -61,8 +62,10 @@ type MultiDayCalendarCardConfig = {
   max_simultaneous_events?: number;
   /** Action applied when a calendar event is tapped. */
   tap_action?: EventAction;
-  /** Whether event locations may be sent to Nominatim and shown on a map. */
+  /** Whether event locations may be sent to the configured provider and shown on a map. */
   show_location_map?: boolean;
+  location_map_provider?: LocationMapProvider;
+  custom_nominatim_url?: string;
 };
 
 type LoadedEvent = {
@@ -80,9 +83,11 @@ declare global {
   }
 }
 
-const DEFAULT_CONFIG: Required<
-  Omit<MultiDayCalendarCardConfig, 'type' | 'title'>
-> = {
+type NormalizedCardConfig = Required<
+  Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'location_map_provider' | 'custom_nominatim_url'>
+> & Pick<MultiDayCalendarCardConfig, 'type' | 'title' | 'location_map_provider' | 'custom_nominatim_url'>;
+
+const DEFAULT_CONFIG: Omit<NormalizedCardConfig, 'type' | 'title'> = {
   days: 2,
   start_time: '06:00',
   end_time: '22:00',
@@ -94,6 +99,8 @@ const DEFAULT_CONFIG: Required<
   max_simultaneous_events: 3,
   tap_action: { action: 'none' },
   show_location_map: false,
+  location_map_provider: undefined,
+  custom_nominatim_url: undefined,
   calendars: [],
 };
 
@@ -112,6 +119,22 @@ function escapeHtml(value: string): string {
 
 function safeColor(color: string | undefined): string {
   return color && /^#[0-9a-f]{6}$/i.test(color) ? color : 'var(--primary-color)';
+}
+
+function locationMapProvider(value: unknown): LocationMapProvider | undefined {
+  return typeof value === 'string' && LOCATION_MAP_PROVIDERS.includes(value as LocationMapProvider)
+    ? value as LocationMapProvider
+    : undefined;
+}
+
+function customNominatimUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function sameLocalDay(left: Date, right: Date): boolean {
@@ -140,10 +163,7 @@ class MultiDayCalendarCard extends HTMLElement {
     };
   }
 
-  private _config?: Required<
-    Omit<MultiDayCalendarCardConfig, 'type' | 'title'>
-  > &
-    Pick<MultiDayCalendarCardConfig, 'type' | 'title'>;
+  private _config?: NormalizedCardConfig;
   private _hass?: HomeAssistantLike;
   private _events: LoadedEvent[] = [];
   private _loading = false;
@@ -218,6 +238,9 @@ class MultiDayCalendarCard extends HTMLElement {
       hour_height: hourHeight,
       calendars,
       tap_action: normalizeTapAction(config.tap_action),
+      show_location_map: config.show_location_map === true,
+      location_map_provider: locationMapProvider(config.location_map_provider),
+      custom_nominatim_url: customNominatimUrl(config.custom_nominatim_url),
     };
     this._requestKey = undefined;
     this.cancelRecoveryRefresh();
@@ -354,10 +377,14 @@ class MultiDayCalendarCard extends HTMLElement {
   private showEventDetails(eventIndex: number): void {
     const loadedEvent = this._events[eventIndex];
     if (!loadedEvent) return;
+    const locationMapEnabled = this._config?.show_location_map === true &&
+      this._config.location_map_provider !== undefined;
     const dialogParams: EventDetailDialogParams = {
       calendarName: loadedEvent.calendar.label ?? loadedEvent.calendar.entity,
       calendarColor: safeColor(loadedEvent.calendar.color),
-      showLocationMap: this._config?.show_location_map ?? false,
+      showLocationMap: locationMapEnabled,
+      locationMapProvider: this._config?.location_map_provider,
+      customNominatimUrl: this._config?.custom_nominatim_url,
       isDarkTheme: this._hass?.themes?.darkMode === true,
       event: loadedEvent.event,
     };

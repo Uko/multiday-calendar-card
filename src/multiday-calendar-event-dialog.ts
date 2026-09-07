@@ -2,16 +2,25 @@ import type { CalendarApiEvent } from './calendar-model';
 import {
   eventDetailTitle,
   geocodeLocation,
+  googleMapsEmbedUrl,
   openStreetMapEmbedUrl,
+  type GeocodedLocation,
+  type LocationMapProvider,
 } from './event-detail-model';
 
 export type EventDetailDialogParams = {
   calendarName: string;
   calendarColor: string;
   showLocationMap: boolean;
+  locationMapProvider?: LocationMapProvider;
+  customNominatimUrl?: string;
   isDarkTheme: boolean;
   event: CalendarApiEvent;
 };
+
+const NOMINATIM_LOOKUP_INTERVAL_MS = 1_000;
+const geocodeCache = new Map<string, GeocodedLocation | undefined>();
+let lastNominatimLookupMs = 0;
 
 type HomeAssistantLike = {
   locale?: { language?: string };
@@ -95,33 +104,57 @@ class MultidayCalendarEventDialog extends HTMLElement {
     }));
   };
 
-  private async renderLocationMap(location: string, title: string): Promise<void> {
+  private async renderLocationMap(
+    location: string,
+    title: string,
+    provider: LocationMapProvider,
+    customNominatimUrl?: string,
+  ): Promise<void> {
     const target = this.querySelector<HTMLElement>('[data-map-location]');
     if (!target) return;
-    const controller = new AbortController();
-    this._geocodeController = controller;
-    try {
-      const coordinates = await geocodeLocation(location, fetch, controller.signal);
-      if (controller.signal.aborted || target !== this.querySelector('[data-map-location]')) return;
-      if (!coordinates) {
+
+    if (provider === 'google_maps') {
+      const mapUrl = googleMapsEmbedUrl(location);
+      target.hidden = false;
+      target.innerHTML = `<iframe title="Map for ${escapeHtml(title)}" src="${escapeHtml(mapUrl)}" loading="lazy"></iframe>`;
+      return;
+    }
+
+    const cacheKey = `${customNominatimUrl ?? ''}\u0000${location}`;
+    const cached = geocodeCache.get(cacheKey);
+    let coordinates = cached;
+    if (!geocodeCache.has(cacheKey)) {
+      if (Date.now() - lastNominatimLookupMs < NOMINATIM_LOOKUP_INTERVAL_MS) {
         target.remove();
         return;
       }
-      const mapUrl = openStreetMapEmbedUrl(coordinates);
-      const themeClass = this._params?.isDarkTheme ? 'dark-map' : 'light-map';
-      target.hidden = false;
-      target.innerHTML = `<iframe class="${themeClass}" title="Map for ${escapeHtml(title)}" src="${escapeHtml(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
-    } catch (error) {
-      if ((error as DOMException).name === 'AbortError') return;
-      target.remove();
-    } finally {
-      if (this._geocodeController === controller) this._geocodeController = undefined;
+      const controller = new AbortController();
+      this._geocodeController = controller;
+      try {
+        lastNominatimLookupMs = Date.now();
+        coordinates = await geocodeLocation(location, customNominatimUrl, fetch, controller.signal);
+        geocodeCache.set(cacheKey, coordinates);
+      } catch (error) {
+        if ((error as DOMException).name === 'AbortError') return;
+        geocodeCache.set(cacheKey, undefined);
+      } finally {
+        if (this._geocodeController === controller) this._geocodeController = undefined;
+      }
     }
+
+    if (target !== this.querySelector('[data-map-location]') || !coordinates) {
+      target.remove();
+      return;
+    }
+    const mapUrl = openStreetMapEmbedUrl(coordinates);
+    const themeClass = this._params?.isDarkTheme ? 'dark-map' : 'light-map';
+    target.hidden = false;
+    target.innerHTML = `<iframe class="${themeClass}" title="Map for ${escapeHtml(title)}" src="${escapeHtml(mapUrl)}" loading="lazy"></iframe><p class="attribution"><a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>`;
   }
 
   private render(): void {
     if (!this._params) return;
-    const { calendarName, calendarColor, showLocationMap, event } = this._params;
+    const { calendarName, calendarColor, showLocationMap, locationMapProvider, customNominatimUrl, event } = this._params;
     const locale = this.hass?.locale?.language ?? navigator.language ?? 'en';
     const title = eventDetailTitle(event.summary);
     const location = event.location?.trim();
@@ -134,7 +167,7 @@ class MultidayCalendarEventDialog extends HTMLElement {
             <div><dt>Calendar</dt><dd>${escapeHtml(calendarName)}</dd></div>
             ${location ? `<div><dt>Location</dt><dd>${escapeHtml(location)}</dd></div>` : ''}
           </dl>
-          ${location && showLocationMap ? '<section class="map" data-map-location hidden></section>' : ''}
+          ${location && showLocationMap && locationMapProvider ? '<section class="map" data-map-location hidden></section>' : ''}
           ${event.description?.trim() ? `<section><h3>Description</h3><p>${escapeHtml(event.description.trim())}</p></section>` : ''}
           ${url ? `<p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open event link</a></p>` : ''}
         </div>
@@ -157,7 +190,9 @@ class MultidayCalendarEventDialog extends HTMLElement {
     `;
     this.querySelector('ha-dialog')?.addEventListener('closed', this.onClosed, { once: true });
     this.querySelector('button')?.addEventListener('click', this.onClosed, { once: true });
-    if (location && showLocationMap) void this.renderLocationMap(location, title);
+    if (location && showLocationMap && locationMapProvider) {
+      void this.renderLocationMap(location, title, locationMapProvider, customNominatimUrl);
+    }
   }
 }
 

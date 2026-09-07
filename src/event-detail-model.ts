@@ -4,6 +4,9 @@ export type GeocodedLocation = {
   boundingBox?: [south: number, north: number, west: number, east: number];
 };
 
+export const LOCATION_MAP_PROVIDERS = ['google_maps', 'osm_nominatim'] as const;
+export type LocationMapProvider = typeof LOCATION_MAP_PROVIDERS[number];
+
 type NominatimResult = {
   lat?: string;
   lon?: string;
@@ -21,11 +24,19 @@ export function eventDetailTitle(summary?: string): string {
   return summary?.trim() || 'Untitled event';
 }
 
-export function nominatimSearchUrl(location: string): string {
-  const url = new URL(NOMINATIM_SEARCH_ENDPOINT);
+export function nominatimSearchUrl(location: string, endpoint = NOMINATIM_SEARCH_ENDPOINT): string {
+  const url = new URL(endpoint);
+  if (url.pathname === '/' || url.pathname === '') url.pathname = '/search';
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '1');
   url.searchParams.set('q', location);
+  return url.href;
+}
+
+export function googleMapsEmbedUrl(location: string): string {
+  const url = new URL('https://www.google.com/maps');
+  url.searchParams.set('q', location);
+  url.searchParams.set('output', 'embed');
   return url.href;
 }
 
@@ -49,10 +60,11 @@ function parseBoundingBox(value: unknown): GeocodedLocation['boundingBox'] | und
 
 export async function geocodeLocation(
   location: string,
+  endpoint?: string,
   fetcher: FetchLike = fetch,
   signal?: AbortSignal,
 ): Promise<GeocodedLocation | undefined> {
-  const response = await fetcher(nominatimSearchUrl(location), { signal });
+  const response = await fetcher(nominatimSearchUrl(location, endpoint), { signal });
   if (!response.ok) return undefined;
   const results = await response.json();
   if (!Array.isArray(results) || !results[0] || typeof results[0] !== 'object') return undefined;
