@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+let nowLineTopPercent: (day: Date, now: Date, startMinutes: number, endMinutes: number) => number | undefined;
+
 class FakeHTMLElement {
   isConnected = false;
 }
@@ -20,7 +22,16 @@ Object.assign(globalThis, {
   window: { customCards: [] },
 });
 
-await import('../src/multiday-calendar-card');
+const calendarCardModule = await import('../src/multiday-calendar-card');
+nowLineTopPercent = calendarCardModule.nowLineTopPercent;
+
+test('now-line position tracks the current minute without re-rendering events', () => {
+  const today = new Date(2026, 8, 8, 10, 15);
+
+  assert.equal(nowLineTopPercent(today, today, 6 * 60, 22 * 60), 26.5625);
+  assert.equal(nowLineTopPercent(today, new Date(2026, 8, 9, 10, 15), 6 * 60, 22 * 60), undefined);
+  assert.equal(nowLineTopPercent(today, new Date(2026, 8, 8, 22, 0), 6 * 60, 22 * 60), undefined);
+});
 
 test('Home Assistant state updates do not re-render the calendar', () => {
   const CalendarCard = elementRegistry.get('multiday-calendar-card');
