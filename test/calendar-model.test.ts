@@ -16,6 +16,8 @@ import {
   layoutTimedEventLanes,
   averageEventColors,
   CALENDAR_FETCH_RECOVERY_DELAY_MS,
+  normalizeSkipDays,
+  visibleDays,
 } from '../src/calendar-model';
 
 test('buildCalendarEventsPath encodes the calendar entity and date range', () => {
@@ -38,6 +40,37 @@ test('eventRangeForDays starts at local midnight and ends after the configured d
   assert.equal(range.start.getHours(), 0);
   assert.equal(range.end.getDate(), 30);
   assert.equal(range.end.getHours(), 0);
+});
+
+test('visibleDays skips configured two-letter day names and keeps the requested display count', () => {
+  const days = visibleDays(new Date(2026, 6, 4, 13, 45), 5, ['sa', 'su']);
+
+  assert.deepEqual(days.map((day) => [day.getFullYear(), day.getMonth(), day.getDate()]), [
+    [2026, 6, 6],
+    [2026, 6, 7],
+    [2026, 6, 8],
+    [2026, 6, 9],
+    [2026, 6, 10],
+  ]);
+});
+
+test('eventRangeForDays fetches through the last displayed date when days are skipped', () => {
+  const range = eventRangeForDays(new Date(2026, 6, 4, 13, 45), 5, ['sa', 'su']);
+
+  assert.deepEqual(
+    [range.start.getFullYear(), range.start.getMonth(), range.start.getDate(), range.start.getHours()],
+    [2026, 6, 4, 0],
+  );
+  assert.deepEqual(
+    [range.end.getFullYear(), range.end.getMonth(), range.end.getDate(), range.end.getHours()],
+    [2026, 6, 11, 0],
+  );
+});
+
+test('normalizeSkipDays accepts known day names and rejects invalid or complete selections', () => {
+  assert.deepEqual(normalizeSkipDays(['mo', 'fr']), ['mo', 'fr']);
+  assert.throws(() => normalizeSkipDays(['monday']), /skip_days must be a list/);
+  assert.throws(() => normalizeSkipDays(['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su']), /cannot include every day/);
 });
 
 test('eventPlacementForDay clips an event to visible hours within one day', () => {

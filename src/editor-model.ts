@@ -1,5 +1,6 @@
 import { validateTapAction, type EventAction } from './event-interaction';
 import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
+import { DAY_NAMES, type DayName } from './calendar-model';
 
 export type CalendarEditorConfig = {
   entity: string;
@@ -19,6 +20,7 @@ export type EditorConfig = {
   height?: number | null;
   hour_height?: number;
   show_now_line?: boolean;
+  skip_days?: DayName[];
   max_simultaneous_events?: number;
   tap_action?: EventAction;
   show_location_map?: boolean;
@@ -79,6 +81,13 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   }
   if (config.slot_minutes !== undefined && !GRID_INTERVALS.includes(config.slot_minutes as typeof GRID_INTERVALS[number])) {
     errors.push('Grid interval must be 15, 20, 30, 60, or 120 minutes.');
+  }
+  if (config.skip_days !== undefined) {
+    if (!Array.isArray(config.skip_days) || !config.skip_days.every((day) => DAY_NAMES.includes(day as DayName))) {
+      errors.push('Skip days must be a list containing only mo, tu, we, th, fr, sa, or su.');
+    } else if (new Set(config.skip_days).size === DAY_NAMES.length) {
+      errors.push('Skip days cannot include every day of the week.');
+    }
   }
   if (config.height !== undefined && config.height !== null && (!Number.isFinite(config.height) || config.height <= 0)) {
     errors.push('Fixed height must be a positive number of pixels.');

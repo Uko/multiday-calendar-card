@@ -15,6 +15,7 @@ It exists for dashboards and kiosks where a compact calendar list is not enough:
 - See timed events on a vertical time grid, sized and positioned by duration.
 - Keep all-day events visible in compact rows above each day.
 - Show an optional current-time line.
+- Skip any combination of weekdays while still displaying the configured number of days.
 - Handle simultaneous events in adjacent lanes, with a `+N more` summary when the lane limit is exceeded.
 - Use the visual card editor for everyday settings, or configure the card entirely in YAML.
 - Choose an automatic timeline height or a fixed card height for dense dashboards and kiosks.
@@ -98,6 +99,7 @@ calendars:
 | `end_time` | `"22:00"` | Last visible time, in `HH:mm` format. It must be after `start_time`; `"24:00"` is accepted as the end of the day. |
 | `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. |
 | `show_now_line` | `true` | Show or hide the current-time line. |
+| `skip_days` | `[]` | Two-letter day names to omit: `mo`, `tu`, `we`, `th`, `fr`, `sa`, `su`. The card keeps looking forward until it has displayed `days` non-skipped dates. It cannot contain all seven names. |
 | `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. |
 | `tap_action` | `{ action: none }` | Action for a tapped displayed event. Use `{ action: more-info }` to open a read-only event popup; only `none` and `more-info` are currently supported. |
 | `show_location_map` | `false` | Explicit consent to send an event location to the selected external map/geocoding provider when its detail popup is opened. This has no effect unless `location_map_provider` is set. |
@@ -108,6 +110,16 @@ calendars:
 | `refresh_interval` | `30` | Minutes between calendar refreshes. It must be a positive number. |
 
 ### Layout examples
+
+Show the next five weekdays, including when today is a weekend:
+
+```yaml
+type: custom:multiday-calendar-card
+days: 5
+skip_days: [sa, su]
+calendars:
+  - entity: calendar.household
+```
 
 Use `hour_height` when the card may grow with the visible time range:
 
@@ -138,7 +150,7 @@ calendars:
 The Home Assistant card editor exposes the common options in three groups:
 
 - **Calendar sources** — calendar entities, display labels, and event colors.
-- **View & schedule** — title, day count, visible hours, grid interval, current-time line, and overlap limit.
+- **View & schedule** — title, day count, visible hours, grid interval, a weekday toggle group for skipped days, current-time line, and overlap limit.
 - **Interactions** — show event details on tap and optionally show maps for event locations.
 - **Layout & density** — automatic height with pixels per hour, or a fixed-height timeline.
 

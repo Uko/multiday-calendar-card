@@ -9,6 +9,7 @@ import {
   type EditorConfig,
 } from './editor-model';
 import { type EventAction } from './event-interaction';
+import { DAY_NAMES, type DayName } from './calendar-model';
 
 type HomeAssistantLike = {
   states?: Record<string, unknown>;
@@ -232,6 +233,9 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         button.remove svg { width: 24px; height: 24px; fill: currentColor; }
         .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
         .toggle input { width: auto; min-height: auto; }
+        .day-toggle-group { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+        .day-toggle { min-height: 38px; padding: 6px; border-color: var(--divider-color); color: var(--primary-text-color); }
+        .day-toggle[aria-pressed="true"] { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); color: var(--primary-color); font-weight: 600; }
         .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
         .error { color: var(--error-color); margin: 4px 0; }
         .warning { color: var(--warning-color, #b26a00); margin: 4px 0; }
@@ -262,6 +266,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
           <div class="field"><label>End time</label><select data-config="end_time">${parseTime(endTime)! % 60 !== 0 ? `<option value="${endTime}" selected>${endTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${endTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
         </div>
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
+        <div class="field"><label>Skip days</label><div class="day-toggle-group" role="group" aria-label="Days to skip">${DAY_NAMES.map((day) => `<button class="day-toggle" data-action="toggle-skip-day" data-day-name="${day}" type="button" aria-pressed="${config.skip_days?.includes(day) === true}">${day}</button>`).join('')}</div><div class="hint">Selected days are omitted. Use two-letter names in YAML, for example <code>skip_days: [sa, su]</code>.</div></div>
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <div data-interaction-editor></div>
@@ -295,6 +300,15 @@ export class MultidayCalendarCardEditor extends HTMLElement {
       const fixed = (event.target as HTMLInputElement).checked;
       this.updateConfig({ height: fixed ? 480 : null }, true);
     });
+    this.querySelectorAll<HTMLButtonElement>('[data-action="toggle-skip-day"]').forEach((button) => button.addEventListener('click', () => {
+      const day = button.dataset.dayName as DayName;
+      const skipDays = this._config.skip_days ?? [];
+      this.updateConfig({
+        skip_days: skipDays.includes(day)
+          ? skipDays.filter((value) => value !== day)
+          : [...skipDays, day],
+      }, true);
+    }));
     this.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-config]').forEach((field) => field.addEventListener('change', () => {
       const key = field.dataset.config as keyof EditorConfig;
       const value = field.type === 'checkbox' ? (field as HTMLInputElement).checked :

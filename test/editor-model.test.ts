@@ -53,6 +53,18 @@ test('validateEditorConfig accepts the two-hour grid interval and rejects an uns
   }), ['Grid interval must be 15, 20, 30, 60, or 120 minutes.']);
 });
 
+test('validateEditorConfig accepts two-letter skip_days and rejects invalid or all-day selections', () => {
+  const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
+
+  assert.deepEqual(validateEditorConfig({ ...base, skip_days: ['sa', 'su'] }), []);
+  assert.deepEqual(validateEditorConfig({ ...base, skip_days: ['sat'] }), [
+    'Skip days must be a list containing only mo, tu, we, th, fr, sa, or su.',
+  ]);
+  assert.deepEqual(validateEditorConfig({ ...base, skip_days: ['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su'] }), [
+    'Skip days cannot include every day of the week.',
+  ]);
+});
+
 test('time helpers accept standard HH:mm values and preserve the 24:00 end-of-day boundary', () => {
   assert.equal(parseTime('11:30'), 690);
   assert.equal(parseTime('24:00'), 1440);

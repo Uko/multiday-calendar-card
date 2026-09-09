@@ -1,5 +1,34 @@
 const CALENDAR_DAY_NAME_HEIGHT_PX = 38;
 const ALL_DAY_EVENT_ROW_HEIGHT_PX = 22;
+const DAY_NAMES = ['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su'];
+function dayName(date) {
+    return DAY_NAMES[(date.getDay() + 6) % 7];
+}
+function normalizeSkipDays(value) {
+    if (value === undefined)
+        return [];
+    if (!Array.isArray(value) || !value.every((day) => DAY_NAMES.includes(day))) {
+        throw new Error('skip_days must be a list containing only mo, tu, we, th, fr, sa, or su');
+    }
+    const skipDays = Array.from(new Set(value));
+    if (skipDays.length === DAY_NAMES.length) {
+        throw new Error('skip_days cannot include every day of the week');
+    }
+    return skipDays;
+}
+/** Return exactly `days` dates, omitting any configured local weekday names. */
+function visibleDays(now, days, skipDays = []) {
+    const skipped = new Set(skipDays);
+    const cursor = new Date(now);
+    cursor.setHours(0, 0, 0, 0);
+    const visible = [];
+    while (visible.length < days) {
+        if (!skipped.has(dayName(cursor)))
+            visible.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return visible;
+}
 function calendarHeaderHeight(allDayEventCount) {
     return CALENDAR_DAY_NAME_HEIGHT_PX + allDayEventCount * ALL_DAY_EVENT_ROW_HEIGHT_PX;
 }
@@ -110,11 +139,13 @@ function allDayEventPlacementForDay(event, day) {
         return undefined;
     return { summary: event.summary?.trim() || 'Untitled event' };
 }
-function eventRangeForDays(now, days) {
+function eventRangeForDays(now, days, skipDays = []) {
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + days);
+    const displayedDays = visibleDays(start, days, skipDays);
+    const lastDisplayedDay = displayedDays[displayedDays.length - 1];
+    const end = new Date(lastDisplayedDay);
+    end.setDate(end.getDate() + 1);
     return { start, end };
 }
 function buildCalendarEventsPath(entityId, start, end) {
@@ -355,6 +386,14 @@ function validateEditorConfig(config) {
     }
     if (config.slot_minutes !== undefined && !GRID_INTERVALS.includes(config.slot_minutes)) {
         errors.push('Grid interval must be 15, 20, 30, 60, or 120 minutes.');
+    }
+    if (config.skip_days !== undefined) {
+        if (!Array.isArray(config.skip_days) || !config.skip_days.every((day) => DAY_NAMES.includes(day))) {
+            errors.push('Skip days must be a list containing only mo, tu, we, th, fr, sa, or su.');
+        }
+        else if (new Set(config.skip_days).size === DAY_NAMES.length) {
+            errors.push('Skip days cannot include every day of the week.');
+        }
     }
     if (config.height !== undefined && config.height !== null && (!Number.isFinite(config.height) || config.height <= 0)) {
         errors.push('Fixed height must be a positive number of pixels.');
@@ -739,6 +778,9 @@ class MultidayCalendarCardEditor extends HTMLElement {
         button.remove svg { width: 24px; height: 24px; fill: currentColor; }
         .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
         .toggle input { width: auto; min-height: auto; }
+        .day-toggle-group { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+        .day-toggle { min-height: 38px; padding: 6px; border-color: var(--divider-color); color: var(--primary-text-color); }
+        .day-toggle[aria-pressed="true"] { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); color: var(--primary-color); font-weight: 600; }
         .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
         .error { color: var(--error-color); margin: 4px 0; }
         .warning { color: var(--warning-color, #b26a00); margin: 4px 0; }
@@ -769,6 +811,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
           <div class="field"><label>End time</label><select data-config="end_time">${parseTime(endTime) % 60 !== 0 ? `<option value="${endTime}" selected>${endTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${endTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
         </div>
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
+        <div class="field"><label>Skip days</label><div class="day-toggle-group" role="group" aria-label="Days to skip">${DAY_NAMES.map((day) => `<button class="day-toggle" data-action="toggle-skip-day" data-day-name="${day}" type="button" aria-pressed="${config.skip_days?.includes(day) === true}">${day}</button>`).join('')}</div><div class="hint">Selected days are omitted. Use two-letter names in YAML, for example <code>skip_days: [sa, su]</code>.</div></div>
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
       <div data-interaction-editor></div>
@@ -801,6 +844,15 @@ class MultidayCalendarCardEditor extends HTMLElement {
             const fixed = event.target.checked;
             this.updateConfig({ height: fixed ? 480 : null }, true);
         });
+        this.querySelectorAll('[data-action="toggle-skip-day"]').forEach((button) => button.addEventListener('click', () => {
+            const day = button.dataset.dayName;
+            const skipDays = this._config.skip_days ?? [];
+            this.updateConfig({
+                skip_days: skipDays.includes(day)
+                    ? skipDays.filter((value) => value !== day)
+                    : [...skipDays, day],
+            }, true);
+        }));
         this.querySelectorAll('[data-config]').forEach((field) => field.addEventListener('change', () => {
             const key = field.dataset.config;
             const value = field.type === 'checkbox' ? field.checked :
@@ -838,6 +890,7 @@ const DEFAULT_CONFIG = {
     height: null,
     hour_height: 56,
     show_now_line: true,
+    skip_days: [],
     max_simultaneous_events: 3,
     tap_action: { action: 'none' },
     show_location_map: false,
@@ -940,6 +993,7 @@ class MultiDayCalendarCard extends HTMLElement {
         if (!Number.isInteger(days) || days < 1 || days > 7) {
             throw new Error('days must be a whole number from 1 to 7');
         }
+        const skipDays = normalizeSkipDays(config.skip_days);
         const slotMinutes = Number(config.slot_minutes ?? DEFAULT_CONFIG.slot_minutes);
         if (!Number.isInteger(slotMinutes) || ![15, 20, 30, 60, 120].includes(slotMinutes)) {
             throw new Error('slot_minutes must be 15, 20, 30, 60, or 120');
@@ -968,6 +1022,7 @@ class MultiDayCalendarCard extends HTMLElement {
             ...DEFAULT_CONFIG,
             ...config,
             days,
+            skip_days: skipDays,
             start_time: startTime,
             end_time: endTime,
             slot_minutes: slotMinutes,
@@ -1100,7 +1155,7 @@ class MultiDayCalendarCard extends HTMLElement {
     async loadEvents(force = false) {
         if (!this._config || !this._hass)
             return;
-        const range = eventRangeForDays(new Date(), this._config.days);
+        const range = eventRangeForDays(new Date(), this._config.days, this._config.skip_days);
         const key = JSON.stringify({
             calendars: this._config.calendars,
             start: range.start.toISOString(),
@@ -1182,7 +1237,7 @@ class MultiDayCalendarCard extends HTMLElement {
             return;
         const config = this._config;
         const now = new Date();
-        const range = eventRangeForDays(now, config.days);
+        const range = eventRangeForDays(now, config.days, config.skip_days);
         const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
         const startMinutes = parseTime(config.start_time);
         const endMinutes = parseTime(config.end_time);
@@ -1201,11 +1256,7 @@ class MultiDayCalendarCard extends HTMLElement {
             hour: 'numeric',
             minute: '2-digit',
         });
-        const days = Array.from({ length: config.days }, (_, index) => {
-            const day = new Date(range.start);
-            day.setDate(day.getDate() + index);
-            return day;
-        });
+        const days = visibleDays(range.start, config.days, config.skip_days);
         const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...days.map((day) => this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
         const timeLabelMinutes = [
             startMinutes,

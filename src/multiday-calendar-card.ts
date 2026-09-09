@@ -9,11 +9,14 @@ import {
   eventPlacementForDay,
   eventRangeForDays,
   layoutTimedEventLanes,
+  normalizeSkipDays,
   refreshIntervalMs,
   shouldRetryCalendarFetch,
   shouldRefreshAfterVisibility,
   timelineGeometry,
+  visibleDays,
   type CalendarApiEvent,
+  type DayName,
 } from './calendar-model';
 import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
 import { parseTime } from './editor-model';
@@ -58,6 +61,8 @@ type MultiDayCalendarCardConfig = {
   /** Timeline height in pixels per visible hour when height is omitted. Defaults to 56. */
   hour_height?: number;
   show_now_line?: boolean;
+  /** Two-letter weekday names to omit from the display, for example ['sa', 'su']. */
+  skip_days?: DayName[];
   /** Maximum concurrent timed-event lanes per overlap group. */
   max_simultaneous_events?: number;
   /** Action applied when a calendar event is tapped. */
@@ -96,6 +101,7 @@ const DEFAULT_CONFIG: Omit<NormalizedCardConfig, 'type' | 'title'> = {
   height: null,
   hour_height: 56,
   show_now_line: true,
+  skip_days: [],
   max_simultaneous_events: 3,
   tap_action: { action: 'none' },
   show_location_map: false,
@@ -210,6 +216,7 @@ class MultiDayCalendarCard extends HTMLElement {
     if (!Number.isInteger(days) || days < 1 || days > 7) {
       throw new Error('days must be a whole number from 1 to 7');
     }
+    const skipDays = normalizeSkipDays(config.skip_days);
 
     const slotMinutes = Number(config.slot_minutes ?? DEFAULT_CONFIG.slot_minutes);
     if (!Number.isInteger(slotMinutes) || ![15, 20, 30, 60, 120].includes(slotMinutes)) {
@@ -247,6 +254,7 @@ class MultiDayCalendarCard extends HTMLElement {
       ...DEFAULT_CONFIG,
       ...config,
       days,
+      skip_days: skipDays,
       start_time: startTime,
       end_time: endTime,
       slot_minutes: slotMinutes,
@@ -392,7 +400,7 @@ class MultiDayCalendarCard extends HTMLElement {
   private async loadEvents(force = false): Promise<void> {
     if (!this._config || !this._hass) return;
 
-    const range = eventRangeForDays(new Date(), this._config.days);
+    const range = eventRangeForDays(new Date(), this._config.days, this._config.skip_days);
     const key = JSON.stringify({
       calendars: this._config.calendars,
       start: range.start.toISOString(),
@@ -480,7 +488,7 @@ class MultiDayCalendarCard extends HTMLElement {
 
     const config = this._config;
     const now = new Date();
-    const range = eventRangeForDays(now, config.days);
+    const range = eventRangeForDays(now, config.days, config.skip_days);
     const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
     const startMinutes = parseTime(config.start_time)!;
     const endMinutes = parseTime(config.end_time)!;
@@ -500,11 +508,7 @@ class MultiDayCalendarCard extends HTMLElement {
       minute: '2-digit',
     });
 
-    const days = Array.from({ length: config.days }, (_, index) => {
-      const day = new Date(range.start);
-      day.setDate(day.getDate() + index);
-      return day;
-    });
+    const days = visibleDays(range.start, config.days, config.skip_days);
     const dayHeaderHeight = calendarHeaderHeight(
       Math.max(
         0,

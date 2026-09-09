@@ -10,6 +10,40 @@ export type CalendarApiEvent = {
 export const CALENDAR_DAY_NAME_HEIGHT_PX = 38;
 export const ALL_DAY_EVENT_ROW_HEIGHT_PX = 22;
 
+export const DAY_NAMES = ['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su'] as const;
+export type DayName = typeof DAY_NAMES[number];
+
+function dayName(date: Date): DayName {
+  return DAY_NAMES[(date.getDay() + 6) % 7];
+}
+
+export function normalizeSkipDays(value: unknown): DayName[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((day) => DAY_NAMES.includes(day as DayName))) {
+    throw new Error('skip_days must be a list containing only mo, tu, we, th, fr, sa, or su');
+  }
+  const skipDays = Array.from(new Set(value as DayName[]));
+  if (skipDays.length === DAY_NAMES.length) {
+    throw new Error('skip_days cannot include every day of the week');
+  }
+  return skipDays;
+}
+
+/** Return exactly `days` dates, omitting any configured local weekday names. */
+export function visibleDays(now: Date, days: number, skipDays: readonly DayName[] = []): Date[] {
+  const skipped = new Set(skipDays);
+  const cursor = new Date(now);
+  cursor.setHours(0, 0, 0, 0);
+  const visible: Date[] = [];
+
+  while (visible.length < days) {
+    if (!skipped.has(dayName(cursor))) visible.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return visible;
+}
+
 export function calendarHeaderHeight(allDayEventCount: number): number {
   return CALENDAR_DAY_NAME_HEIGHT_PX + allDayEventCount * ALL_DAY_EVENT_ROW_HEIGHT_PX;
 }
@@ -175,15 +209,17 @@ export function allDayEventPlacementForDay(
   return { summary: event.summary?.trim() || 'Untitled event' };
 }
 
-export function eventRangeForDays(now: Date, days: number): {
+export function eventRangeForDays(now: Date, days: number, skipDays: readonly DayName[] = []): {
   start: Date;
   end: Date;
 } {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
 
-  const end = new Date(start);
-  end.setDate(end.getDate() + days);
+  const displayedDays = visibleDays(start, days, skipDays);
+  const lastDisplayedDay = displayedDays[displayedDays.length - 1];
+  const end = new Date(lastDisplayedDay);
+  end.setDate(end.getDate() + 1);
 
   return { start, end };
 }
