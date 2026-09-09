@@ -881,6 +881,16 @@ function sameLocalDay(left, right) {
         left.getMonth() === right.getMonth() &&
         left.getDate() === right.getDate());
 }
+function localDateKey(date) {
+    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+function nowLineTopPercent(day, now, startMinutes, endMinutes) {
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    if (!sameLocalDay(day, now) || nowMinutes < startMinutes || nowMinutes >= endMinutes) {
+        return undefined;
+    }
+    return ((nowMinutes - startMinutes) / (endMinutes - startMinutes)) * 100;
+}
 class MultiDayCalendarCard extends HTMLElement {
     constructor() {
         super(...arguments);
@@ -893,10 +903,11 @@ class MultiDayCalendarCard extends HTMLElement {
                 void this.loadEvents(true);
         };
         this.handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible' &&
-                shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs)) {
+            if (document.visibilityState !== 'visible')
+                return;
+            this.updateNowLine();
+            if (shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs))
                 void this.loadEvents(true);
-            }
         };
     }
     static getConfigElement() {
@@ -975,8 +986,10 @@ class MultiDayCalendarCard extends HTMLElement {
         this._failedFetchAttempts = 0;
         this.render();
         void this.loadEvents();
-        if (this.isConnected)
+        if (this.isConnected) {
             this.startRefreshTimer();
+            this.startClockTimer();
+        }
     }
     set hass(hass) {
         const receivedInitialHass = this._hass === undefined;
@@ -993,12 +1006,17 @@ class MultiDayCalendarCard extends HTMLElement {
         this.watchConnection(this._hass?.connection);
         void this.loadEvents();
         this.startRefreshTimer();
+        this.startClockTimer();
         document.addEventListener('visibilitychange', this.handleVisibilityChange);
     }
     disconnectedCallback() {
         if (this._refreshTimerId !== undefined) {
             clearTimeout(this._refreshTimerId);
             this._refreshTimerId = undefined;
+        }
+        if (this._clockTimerId !== undefined) {
+            clearTimeout(this._clockTimerId);
+            this._clockTimerId = undefined;
         }
         this.cancelRecoveryRefresh();
         this.watchConnection();
@@ -1010,6 +1028,47 @@ class MultiDayCalendarCard extends HTMLElement {
         this._connection?.removeEventListener('ready', this.handleConnectionReady);
         this._connection = connection;
         this._connection?.addEventListener('ready', this.handleConnectionReady);
+    }
+    startClockTimer() {
+        if (this._clockTimerId !== undefined)
+            clearTimeout(this._clockTimerId);
+        this.updateNowLine();
+        const now = new Date();
+        const delay = 60_000 - now.getSeconds() * 1_000 - now.getMilliseconds();
+        this._clockTimerId = window.setTimeout(() => {
+            this._clockTimerId = undefined;
+            if (this.isConnected)
+                this.startClockTimer();
+        }, delay);
+    }
+    updateNowLine() {
+        if (!this._config)
+            return;
+        const now = new Date();
+        const startMinutes = parseTime(this._config.start_time);
+        const endMinutes = parseTime(this._config.end_time);
+        const todayKey = localDateKey(now);
+        this.querySelectorAll('.day-column').forEach((column) => {
+            const top = this._config.show_now_line && column.dataset.day === todayKey
+                ? nowLineTopPercent(now, now, startMinutes, endMinutes)
+                : undefined;
+            const line = column.querySelector('.now-line');
+            if (top === undefined) {
+                line?.remove();
+            }
+            else if (line) {
+                line.style.top = `${top}%`;
+            }
+            else {
+                const timeline = column.querySelector('.timeline');
+                if (timeline) {
+                    const newLine = document.createElement('div');
+                    newLine.className = 'now-line';
+                    newLine.style.top = `${top}%`;
+                    timeline.appendChild(newLine);
+                }
+            }
+        });
     }
     startRefreshTimer() {
         if (!this._config)
@@ -1227,10 +1286,13 @@ class MultiDayCalendarCard extends HTMLElement {
             })
                 .join('');
             const isToday = sameLocalDay(day, now);
-            const nowLine = config.show_now_line && isToday && now.getHours() * 60 + now.getMinutes() >= startMinutes && now.getHours() * 60 + now.getMinutes() < endMinutes
-                ? `<div class="now-line" style="top: ${((now.getHours() * 60 + now.getMinutes() - startMinutes) / minutesVisible) * 100}%"></div>`
-                : '';
-            return `<section class="day-column">
+            const nowLineTop = config.show_now_line
+                ? nowLineTopPercent(day, now, startMinutes, endMinutes)
+                : undefined;
+            const nowLine = nowLineTop === undefined
+                ? ''
+                : `<div class="now-line" style="top: ${nowLineTop}%"></div>`;
+            return `<section class="day-column" data-day="${localDateKey(day)}">
           <header class="day-header${isToday ? ' today' : ''}" style="--day-header-height: ${dayHeaderHeight}px">
             <div class="day-name">${escapeHtml(dateFormatter.format(day))}</div>
             ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
@@ -1317,4 +1379,6 @@ window.customCards.push({
     name: 'Multiday Calendar Card',
     description: 'Read-only multi-day schedule card for Home Assistant calendars.',
 });
+
+export { nowLineTopPercent };
 //# sourceMappingURL=multiday-calendar-card.js.map
