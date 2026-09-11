@@ -34,6 +34,10 @@ function hasSkippedDaysBetween(left, right) {
     const localCalendarDay = (date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
     return localCalendarDay(right) - localCalendarDay(left) > 24 * 60 * 60 * 1000;
 }
+/** A first displayed date after today means skipped dates precede the visible window. */
+function hasSkippedDaysBeforeFirstVisibleDay(today, firstVisibleDay) {
+    return hasSkippedDaysBetween(today, firstVisibleDay);
+}
 function calendarHeaderHeight(allDayEventCount) {
     return CALENDAR_DAY_NAME_HEIGHT_PX + allDayEventCount * ALL_DAY_EVENT_ROW_HEIGHT_PX;
 }
@@ -1262,6 +1266,7 @@ class MultiDayCalendarCard extends HTMLElement {
             minute: '2-digit',
         });
         const days = visibleDays(range.start, config.days, config.skip_days);
+        const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
         const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...days.map((day) => this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
         const timeLabelMinutes = [
             startMinutes,
@@ -1382,7 +1387,7 @@ class MultiDayCalendarCard extends HTMLElement {
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>
-            <div class="day-columns ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>
+            <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>
           </div>
         </div>
       </ha-card>
@@ -1404,6 +1409,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
       .day-columns { display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
+      .day-columns.skipped-days-before { border-left-width: 2px; }
       .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
       .day-column.skipped-days-after { border-right-width: 3px; }

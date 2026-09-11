@@ -51,6 +51,11 @@ export function hasSkippedDaysBetween(left: Date, right: Date): boolean {
   return localCalendarDay(right) - localCalendarDay(left) > 24 * 60 * 60 * 1000;
 }
 
+/** A first displayed date after today means skipped dates precede the visible window. */
+export function hasSkippedDaysBeforeFirstVisibleDay(today: Date, firstVisibleDay: Date): boolean {
+  return hasSkippedDaysBetween(today, firstVisibleDay);
+}
+
 export function calendarHeaderHeight(allDayEventCount: number): number {
   return CALENDAR_DAY_NAME_HEIGHT_PX + allDayEventCount * ALL_DAY_EVENT_ROW_HEIGHT_PX;
 }
