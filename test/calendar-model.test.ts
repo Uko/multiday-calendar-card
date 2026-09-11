@@ -16,6 +16,7 @@ import {
   layoutTimedEventLanes,
   averageEventColors,
   CALENDAR_FETCH_RECOVERY_DELAY_MS,
+  hasSkippedDaysBetween,
   normalizeSkipDays,
   visibleDays,
 } from '../src/calendar-model';
@@ -71,6 +72,11 @@ test('normalizeSkipDays accepts known day names and rejects invalid or complete 
   assert.deepEqual(normalizeSkipDays(['mo', 'fr']), ['mo', 'fr']);
   assert.throws(() => normalizeSkipDays(['monday']), /skip_days must be a list/);
   assert.throws(() => normalizeSkipDays(['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su']), /cannot include every day/);
+});
+
+test('hasSkippedDaysBetween marks calendar-date gaps while leaving consecutive days unmarked', () => {
+  assert.equal(hasSkippedDaysBetween(new Date(2026, 6, 3), new Date(2026, 6, 6)), true);
+  assert.equal(hasSkippedDaysBetween(new Date(2026, 6, 6), new Date(2026, 6, 7)), false);
 });
 
 test('eventPlacementForDay clips an event to visible hours within one day', () => {

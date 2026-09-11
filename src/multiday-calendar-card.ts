@@ -8,6 +8,7 @@ import {
   displayTitle,
   eventPlacementForDay,
   eventRangeForDays,
+  hasSkippedDaysBetween,
   layoutTimedEventLanes,
   normalizeSkipDays,
   refreshIntervalMs,
@@ -548,7 +549,8 @@ class MultiDayCalendarCard extends HTMLElement {
     }).join('');
 
     const dayColumns = days
-      .map((day) => {
+      .map((day, index) => {
+        const hasSkippedDaysAfter = index < days.length - 1 && hasSkippedDaysBetween(day, days[index + 1]);
         const allDayPlacements = this._events
           .map(({ calendar, event }, eventIndex) => ({
             calendar,
@@ -622,7 +624,7 @@ class MultiDayCalendarCard extends HTMLElement {
         const nowLine = nowLineTop === undefined
           ? ''
           : `<div class="now-line" style="top: ${nowLineTop}%"></div>`;
-        return `<section class="day-column" data-day="${localDateKey(day)}">
+        return `<section class="day-column${hasSkippedDaysAfter ? ' skipped-days-after' : ''}" data-day="${localDateKey(day)}">
           <header class="day-header${isToday ? ' today' : ''}" style="--day-header-height: ${dayHeaderHeight}px">
             <div class="day-name">${escapeHtml(dateFormatter.format(day))}</div>
             ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
@@ -682,6 +684,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-columns { display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
+      .day-column.skipped-days-after { border-right-width: 3px; }
       .day-columns.fixed-height .day-column { display: flex; flex-direction: column; }
       .day-header { height: var(--day-header-height); box-sizing: border-box; display: flex; flex-direction: column; border-bottom: 1px solid var(--divider-color); font-weight: 600; font-size: 0.875rem; flex: 0 0 auto; }
       .day-name { height: 37px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }

@@ -44,6 +44,13 @@ export function visibleDays(now: Date, days: number, skipDays: readonly DayName[
   return visible;
 }
 
+/** Use local calendar dates so daylight-saving transitions do not affect gap detection. */
+export function hasSkippedDaysBetween(left: Date, right: Date): boolean {
+  const localCalendarDay = (date: Date): number =>
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return localCalendarDay(right) - localCalendarDay(left) > 24 * 60 * 60 * 1000;
+}
+
 export function calendarHeaderHeight(allDayEventCount: number): number {
   return CALENDAR_DAY_NAME_HEIGHT_PX + allDayEventCount * ALL_DAY_EVENT_ROW_HEIGHT_PX;
 }
