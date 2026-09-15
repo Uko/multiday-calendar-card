@@ -142,11 +142,17 @@ export class MultidayCalendarCardEditor extends HTMLElement {
   }
 
   private assignHassToEntityPickers(): void {
-    this.querySelectorAll<EntityPicker>('ha-entity-picker').forEach((picker) => {
+    this.querySelectorAll<EntityPicker>('.calendar-row ha-entity-picker').forEach((picker) => {
       picker.hass = this._hass;
       picker.includeDomains = ['calendar'];
       picker.value = picker.getAttribute('value') ?? '';
     });
+    const startPicker = this.querySelector<EntityPicker>('[data-config="start_day_entity"]');
+    if (startPicker) {
+      startPicker.hass = this._hass;
+      startPicker.includeDomains = ['input_datetime'];
+      startPicker.value = startPicker.getAttribute('value') ?? '';
+    }
   }
 
   private renderInteractionEditor(): void {
@@ -276,6 +282,10 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         <div class="field"><label>Hour height (pixels)</label><input data-config="hour_height" type="number" min="1" step="1" value="${config.hour_height ?? 56}" ${fixedHeight ? 'disabled' : ''}><div class="hint">Timeline height per visible hour. Defaults to 56 pixels when omitted.</div></div>
         <div class="field fixed-height-field"><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}" ${fixedHeight ? '' : 'disabled'}><div class="hint">A fixed height compresses the timeline and overrides hour height; it does not hide events.</div></div>
       </section>
+      <section class="section">
+        <h3>Advanced</h3>
+        <div class="field"><label>Start day entity (optional)</label><ha-entity-picker data-config="start_day_entity" value="${escapeHtml(config.start_day_entity ?? '')}"></ha-entity-picker><div class="hint">Use an input_datetime with a date. When unset, the calendar starts today.</div></div>
+      </section>
       <div class="validation" role="alert"></div>
     `;
     this.bindEvents();
@@ -317,6 +327,9 @@ export class MultidayCalendarCardEditor extends HTMLElement {
           : field.value;
       this.updateConfig({ [key]: value });
     }));
+    this.querySelector<EntityPicker>('[data-config="start_day_entity"]')?.addEventListener('value-changed', (event) => {
+      this.updateConfig({ start_day_entity: (event as CustomEvent<{ value: string }>).detail.value?.trim() || undefined });
+    });
     this.querySelectorAll<HTMLElement>('[data-calendar-index]').forEach((row) => {
       const index = Number(row.dataset.calendarIndex);
       row.querySelector<EntityPicker>('ha-entity-picker')?.addEventListener('value-changed', (event) => {

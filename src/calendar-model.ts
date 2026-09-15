@@ -236,6 +236,23 @@ export function eventRangeForDays(now: Date, days: number, skipDays: readonly Da
   return { start, end };
 }
 
+/** Resolve a local calendar day from an input_datetime-style entity state. */
+export function startDayForEntityState(state: unknown, fallback: Date): Date {
+  const fallbackDay = new Date(fallback);
+  fallbackDay.setHours(0, 0, 0, 0);
+  if (typeof state !== 'string') return fallbackDay;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/.exec(state);
+  if (!match) return fallbackDay;
+
+  const day = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return day.getFullYear() === Number(match[1]) &&
+    day.getMonth() === Number(match[2]) - 1 &&
+    day.getDate() === Number(match[3])
+    ? day
+    : fallbackDay;
+}
+
 export function buildCalendarEventsPath(
   entityId: string,
   start: Date,

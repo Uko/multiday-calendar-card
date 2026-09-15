@@ -15,6 +15,7 @@ import {
   refreshIntervalMs,
   shouldRetryCalendarFetch,
   shouldRefreshAfterVisibility,
+  startDayForEntityState,
   timelineGeometry,
   visibleDays,
   type CalendarApiEvent,
@@ -34,6 +35,7 @@ type HomeAssistantLike = {
   locale?: { language?: string };
   themes?: { darkMode?: boolean };
   connection?: HomeAssistantConnection;
+  states?: Record<string, { state?: unknown }>;
   callApi<T>(method: string, path: string): Promise<T>;
 };
 
@@ -52,6 +54,8 @@ type MultiDayCalendarCardConfig = {
   type: string;
   title?: string;
   days?: number;
+  /** Optional entity whose date state determines the first displayed day. */
+  start_day_entity?: string;
   calendars?: CalendarConfig[];
   start_time?: string;
   end_time?: string;
@@ -91,8 +95,8 @@ declare global {
 }
 
 type NormalizedCardConfig = Required<
-  Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'location_map_provider' | 'custom_nominatim_url'>
-> & Pick<MultiDayCalendarCardConfig, 'type' | 'title' | 'location_map_provider' | 'custom_nominatim_url'>;
+  Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_day_entity' | 'location_map_provider' | 'custom_nominatim_url'>
+> & Pick<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_day_entity' | 'location_map_provider' | 'custom_nominatim_url'>;
 
 const DEFAULT_CONFIG: Omit<NormalizedCardConfig, 'type' | 'title'> = {
   days: 2,
@@ -200,6 +204,8 @@ class MultiDayCalendarCard extends HTMLElement {
   private _failedFetchAttempts = 0;
   private _lastEventsUpdateMs = 0;
   private _connection?: HomeAssistantConnection;
+  private _activeStartDay?: Date;
+  private _dayRolloverTimerId?: number;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
     if (!config?.type) {
@@ -219,6 +225,10 @@ class MultiDayCalendarCard extends HTMLElement {
       throw new Error('days must be a whole number from 1 to 7');
     }
     const skipDays = normalizeSkipDays(config.skip_days);
+    if (config.start_day_entity !== undefined && (typeof config.start_day_entity !== 'string' || config.start_day_entity.trim() === '')) {
+      throw new Error('start_day_entity must be a non-empty Home Assistant entity ID when provided');
+    }
+    const startDayEntity = config.start_day_entity?.trim() || undefined;
 
     const slotMinutes = Number(config.slot_minutes ?? DEFAULT_CONFIG.slot_minutes);
     if (!Number.isInteger(slotMinutes) || ![15, 20, 30, 60, 120].includes(slotMinutes)) {
@@ -257,6 +267,7 @@ class MultiDayCalendarCard extends HTMLElement {
       ...config,
       days,
       skip_days: skipDays,
+      start_day_entity: startDayEntity,
       start_time: startTime,
       end_time: endTime,
       slot_minutes: slotMinutes,
@@ -271,6 +282,8 @@ class MultiDayCalendarCard extends HTMLElement {
       custom_nominatim_url: customNominatimUrl(config.custom_nominatim_url),
     };
     this._requestKey = undefined;
+    this._activeStartDay = undefined;
+    this.onNewStartDate(this.resolveStartDay());
     this.cancelRecoveryRefresh();
     this._failedFetchAttempts = 0;
     this.render();
@@ -278,6 +291,7 @@ class MultiDayCalendarCard extends HTMLElement {
     if (this.isConnected) {
       this.startRefreshTimer();
       this.startClockTimer();
+      this.startDayRolloverTimer();
     }
   }
 
@@ -285,7 +299,9 @@ class MultiDayCalendarCard extends HTMLElement {
     const receivedInitialHass = this._hass === undefined;
     this._hass = hass;
     this.watchConnection(hass.connection);
+    const startDayChanged = this.onNewStartDate(this.resolveStartDay());
     if (receivedInitialHass) void this.loadEvents(this._error !== undefined);
+    else if (this._config?.start_day_entity && startDayChanged) void this.loadEvents();
   }
 
   getCardSize(): number {
@@ -293,11 +309,13 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   connectedCallback(): void {
+    this.onNewStartDate(this.resolveStartDay());
     this.render();
     this.watchConnection(this._hass?.connection);
     void this.loadEvents();
     this.startRefreshTimer();
     this.startClockTimer();
+    this.startDayRolloverTimer();
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
@@ -309,6 +327,10 @@ class MultiDayCalendarCard extends HTMLElement {
     if (this._clockTimerId !== undefined) {
       clearTimeout(this._clockTimerId);
       this._clockTimerId = undefined;
+    }
+    if (this._dayRolloverTimerId !== undefined) {
+      clearTimeout(this._dayRolloverTimerId);
+      this._dayRolloverTimerId = undefined;
     }
     this.cancelRecoveryRefresh();
     this.watchConnection();
@@ -323,13 +345,19 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   private handleConnectionReady = (): void => {
-    if (this.isConnected) void this.loadEvents(true);
+    if (this.isConnected) {
+      this.onNewStartDate(this.resolveStartDay());
+      void this.loadEvents(true);
+    }
   };
 
   private handleVisibilityChange = (): void => {
     if (document.visibilityState !== 'visible') return;
     this.updateNowLine();
-    if (shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs)) void this.loadEvents(true);
+    const startDayChanged = this.onNewStartDate(this.resolveStartDay());
+    if (startDayChanged || shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs)) {
+      void this.loadEvents(true);
+    }
   };
 
   private startClockTimer(): void {
@@ -341,6 +369,19 @@ class MultiDayCalendarCard extends HTMLElement {
       this._clockTimerId = undefined;
       if (this.isConnected) this.startClockTimer();
     }, delay);
+  }
+
+  private startDayRolloverTimer(): void {
+    if (this._dayRolloverTimerId !== undefined) clearTimeout(this._dayRolloverTimerId);
+    if (!this._config || this._config.start_day_entity !== undefined) return;
+
+    const nextMidnight = new Date();
+    nextMidnight.setHours(24, 0, 0, 50);
+    this._dayRolloverTimerId = window.setTimeout(() => {
+      this._dayRolloverTimerId = undefined;
+      if (this.isConnected && this.onNewStartDate(new Date())) void this.loadEvents(true);
+      if (this.isConnected) this.startDayRolloverTimer();
+    }, nextMidnight.getTime() - Date.now());
   }
 
   private updateNowLine(): void {
@@ -399,10 +440,30 @@ class MultiDayCalendarCard extends HTMLElement {
     }, CALENDAR_FETCH_RECOVERY_DELAY_MS);
   }
 
+  private resolveStartDay(now = new Date()): Date {
+    return startDayForEntityState(
+      this._config?.start_day_entity === undefined ? undefined : this._hass?.states?.[this._config.start_day_entity]?.state,
+      now,
+    );
+  }
+
+  private onNewStartDate(date: Date): boolean {
+    const startDay = new Date(date);
+    startDay.setHours(0, 0, 0, 0);
+    if (this._activeStartDay && sameLocalDay(this._activeStartDay, startDay)) return false;
+    this._activeStartDay = startDay;
+    this._requestKey = undefined;
+    return true;
+  }
+
   private async loadEvents(force = false): Promise<void> {
     if (!this._config || !this._hass) return;
 
-    const range = eventRangeForDays(new Date(), this._config.days, this._config.skip_days);
+    const range = eventRangeForDays(
+      this._activeStartDay ?? this.resolveStartDay(),
+      this._config.days,
+      this._config.skip_days,
+    );
     const key = JSON.stringify({
       calendars: this._config.calendars,
       start: range.start.toISOString(),
@@ -490,7 +551,11 @@ class MultiDayCalendarCard extends HTMLElement {
 
     const config = this._config;
     const now = new Date();
-    const range = eventRangeForDays(now, config.days, config.skip_days);
+    const range = eventRangeForDays(
+      this._activeStartDay ?? this.resolveStartDay(now),
+      config.days,
+      config.skip_days,
+    );
     const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
     const startMinutes = parseTime(config.start_time)!;
     const endMinutes = parseTime(config.end_time)!;

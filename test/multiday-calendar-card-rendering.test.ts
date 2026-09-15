@@ -33,6 +33,44 @@ test('now-line position tracks the current minute without re-rendering events', 
   assert.equal(nowLineTopPercent(today, new Date(2026, 8, 8, 22, 0), 6 * 60, 22 * 60), undefined);
 });
 
+test('onNewStartDate updates the active day only when the local calendar day changes', () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  const card = new CalendarCard() as FakeHTMLElement & {
+    onNewStartDate(date: Date): boolean;
+  };
+
+  assert.equal(card.onNewStartDate(new Date(2026, 8, 8, 10, 15)), true);
+  assert.equal(card.onNewStartDate(new Date(2026, 8, 8, 23, 59)), false);
+  assert.equal(card.onNewStartDate(new Date(2026, 8, 9, 0, 0)), true);
+});
+
+test('configured start_day_entity reloads only when its calendar date changes', () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  const card = new CalendarCard() as FakeHTMLElement & {
+    setConfig(config: { type: string; calendars: []; start_day_entity: string }): void;
+    hass: { states: Record<string, { state: string }>; callApi<T>(method: string, path: string): Promise<T> };
+    render(): void;
+    loadEvents(force?: boolean): Promise<void>;
+  };
+  const reloads: boolean[] = [];
+  card.render = () => undefined;
+  card.loadEvents = async (force = false) => { reloads.push(force); };
+  card.setConfig({ type: 'custom:multiday-calendar-card', calendars: [], start_day_entity: 'input_datetime.calendar_start' });
+  reloads.length = 0;
+
+  card.hass = { states: { 'input_datetime.calendar_start': { state: '2026-09-08' } }, callApi: async <T>() => [] as T };
+  reloads.length = 0;
+  card.hass = { states: { 'input_datetime.calendar_start': { state: '2026-09-08 20:00:00' } }, callApi: async <T>() => [] as T };
+  assert.deepEqual(reloads, []);
+
+  card.hass = { states: { 'input_datetime.calendar_start': { state: '2026-09-09' } }, callApi: async <T>() => [] as T };
+  assert.deepEqual(reloads, [false]);
+});
+
 test('Home Assistant state updates do not re-render the calendar', () => {
   const CalendarCard = elementRegistry.get('multiday-calendar-card');
   assert.ok(CalendarCard);

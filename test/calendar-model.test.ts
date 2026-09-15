@@ -9,6 +9,7 @@ import {
   eventPlacementForDay,
   displayTitle,
   eventRangeForDays,
+  startDayForEntityState,
   refreshIntervalMs,
   shouldRefreshAfterVisibility,
   shouldRetryCalendarFetch,
@@ -42,6 +43,28 @@ test('eventRangeForDays starts at local midnight and ends after the configured d
   assert.equal(range.start.getHours(), 0);
   assert.equal(range.end.getDate(), 30);
   assert.equal(range.end.getHours(), 0);
+});
+
+test('startDayForEntityState uses an input_datetime date and falls back to today for malformed states', () => {
+  const today = new Date(2026, 6, 28, 13, 45);
+
+  const dateOnly = startDayForEntityState('2026-08-03', today);
+  assert.deepEqual(
+    [dateOnly.getFullYear(), dateOnly.getMonth(), dateOnly.getDate(), dateOnly.getHours()],
+    [2026, 7, 3, 0],
+  );
+
+  const dateTime = startDayForEntityState('2026-08-04 17:30:00', today);
+  assert.deepEqual(
+    [dateTime.getFullYear(), dateTime.getMonth(), dateTime.getDate(), dateTime.getHours()],
+    [2026, 7, 4, 0],
+  );
+
+  const fallback = startDayForEntityState('unknown', today);
+  assert.deepEqual(
+    [fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), fallback.getHours()],
+    [2026, 6, 28, 0],
+  );
 });
 
 test('visibleDays skips configured two-letter day names and keeps the requested display count', () => {

@@ -13,6 +13,7 @@ export type EditorConfig = {
   type: string;
   title?: string;
   days?: number;
+  start_day_entity?: string;
   calendars?: CalendarEditorConfig[];
   start_time?: string;
   end_time?: string;
@@ -70,6 +71,9 @@ export function validateEditorConfig(config: EditorConfig): string[] {
 
   if (config.days !== undefined && (!Number.isInteger(config.days) || config.days < 1 || config.days > 7)) {
     errors.push('Days displayed must be a whole number from 1 to 7.');
+  }
+  if (config.start_day_entity !== undefined && (typeof config.start_day_entity !== 'string' || config.start_day_entity.trim() === '')) {
+    errors.push('Start day entity must be a non-empty entity ID.');
   }
   const startMinutes = parseTime(config.start_time);
   const endMinutes = parseTime(config.end_time);

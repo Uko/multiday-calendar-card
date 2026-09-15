@@ -95,6 +95,7 @@ calendars:
 | `title` | no title | Optional heading. Omit it for a titleless card. |
 | `calendars` | `[]` | Calendar sources to show. Each source needs a `calendar.*` entity. See [Calendar sources](#calendar-sources). |
 | `days` | `2` | Whole number of days to display, from `1` to `7`. |
+| `start_day_entity` | unset | Optional entity whose `YYYY-MM-DD` or `YYYY-MM-DD HH:mm:ss` state determines the first displayed day. An `input_datetime` with a date is the intended dashboard-navigation helper; when omitted or invalid, the card starts today. |
 | `start_time` | `"06:00"` | First visible time, in `HH:mm` format. |
 | `end_time` | `"22:00"` | Last visible time, in `HH:mm` format. It must be after `start_time`; `"24:00"` is accepted as the end of the day. |
 | `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. |
@@ -108,6 +109,16 @@ calendars:
 | `hour_height` | `56` | Timeline height in pixels per visible hour. Used when `height` is omitted. |
 | `height` | unset | Fixed outer-card height in pixels. It takes precedence over `hour_height` and compresses the timeline without hiding events. |
 | `refresh_interval` | `30` | Minutes between calendar refreshes. It must be a positive number. |
+
+### Date navigation with an entity
+
+By default, the grid begins today. Set `start_day_entity` to an `input_datetime` entity with a date to let dashboard controls choose the first day; changing that entity refreshes the card without requiring card UI.
+
+```yaml
+start_day_entity: input_datetime.calendar_start
+```
+
+The card accepts date-only `YYYY-MM-DD` and date-and-time `YYYY-MM-DD HH:mm:ss` states, using only the local date. If the entity is unavailable or its state is malformed, it safely falls back to today.
 
 ### Layout examples
 

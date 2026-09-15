@@ -86,6 +86,15 @@ test('normalizeEditorConfig retains standard time strings unchanged', () => {
   });
 });
 
+test('validateEditorConfig accepts an optional start_day_entity and rejects an empty one', () => {
+  const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
+
+  assert.deepEqual(validateEditorConfig({ ...base, start_day_entity: 'input_datetime.calendar_start' }), []);
+  assert.deepEqual(validateEditorConfig({ ...base, start_day_entity: '   ' }), [
+    'Start day entity must be a non-empty entity ID.',
+  ]);
+});
+
 test('validateEditorConfig accepts arbitrary minute bounds and rejects malformed or reversed times', () => {
   const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
   assert.deepEqual(validateEditorConfig({ ...base, start_time: '06:15', end_time: '22:45' }), []);
