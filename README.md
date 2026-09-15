@@ -19,6 +19,7 @@ It exists for dashboards and kiosks where a compact calendar list is not enough:
 - Handle simultaneous events in adjacent lanes, with a `+N more` summary when the lane limit is exceeded.
 - Use the visual card editor for everyday settings, or configure the card entirely in YAML.
 - Choose an automatic timeline height or a fixed card height for dense dashboards and kiosks.
+- Optionally scroll horizontally to inspect blank grid space around the configured start day, then return automatically.
 
 ## Installation
 
@@ -99,6 +100,7 @@ calendars:
 | `start_time` | `"06:00"` | First visible time, in `HH:mm` format. |
 | `end_time` | `"22:00"` | Last visible time, in `HH:mm` format. It must be after `start_time`; `"24:00"` is accepted as the end of the day. |
 | `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. |
+| `look_around` | `false` | Enables the horizontal-scroll prototype for trackpads, touchscreens, and horizontal mouse wheels. Movement must exceed 10px before the pane moves; it returns to the configured start day after 30 seconds. It renders blank adjacent date grids only—no additional calendar requests or events are loaded. |
 | `show_now_line` | `true` | Show or hide the current-time line. |
 | `skip_days` | `[]` | Two-letter day names to omit: `mo`, `tu`, `we`, `th`, `fr`, `sa`, `su`. The card keeps looking forward until it has displayed `days` non-skipped dates, marks a skipped-date gap with a thicker divider, and uses a 2px leading border when today itself is skipped. It cannot contain all seven names. |
 | `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. |

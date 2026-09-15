@@ -23,6 +23,11 @@ import {
 } from './calendar-model';
 import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
 import { parseTime } from './editor-model';
+import {
+  LOOK_AROUND_RESET_DELAY_MS,
+  clampLookAroundOffset,
+  scrollOffsetAfterDeadZone,
+} from './look-around-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
 import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
 import type { EventDetailDialogParams } from './multiday-calendar-event-dialog';
@@ -66,6 +71,8 @@ type MultiDayCalendarCardConfig = {
   height?: number | null;
   /** Timeline height in pixels per visible hour when height is omitted. Defaults to 56. */
   hour_height?: number;
+  /** Enable a temporary horizontal drag viewport around the configured start day. */
+  look_around?: boolean;
   show_now_line?: boolean;
   /** Two-letter weekday names to omit from the display, for example ['sa', 'su']. */
   skip_days?: DayName[];
@@ -106,6 +113,7 @@ const DEFAULT_CONFIG: Omit<NormalizedCardConfig, 'type' | 'title'> = {
   refresh_interval: 30,
   height: null,
   hour_height: 56,
+  look_around: false,
   show_now_line: true,
   skip_days: [],
   max_simultaneous_events: 3,
@@ -206,6 +214,9 @@ class MultiDayCalendarCard extends HTMLElement {
   private _connection?: HomeAssistantConnection;
   private _activeStartDay?: Date;
   private _dayRolloverTimerId?: number;
+  private _lookAroundActive = false;
+  private _lookAroundResetTimerId?: number;
+  private _lookAroundAnimationFrameId?: number;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
     if (!config?.type) {
@@ -275,6 +286,7 @@ class MultiDayCalendarCard extends HTMLElement {
       max_simultaneous_events: maxSimultaneousEvents,
       height,
       hour_height: hourHeight,
+      look_around: config.look_around === true,
       calendars,
       tap_action: normalizeTapAction(config.tap_action),
       show_location_map: config.show_location_map === true,
@@ -286,6 +298,8 @@ class MultiDayCalendarCard extends HTMLElement {
     this.onNewStartDate(this.resolveStartDay());
     this.cancelRecoveryRefresh();
     this._failedFetchAttempts = 0;
+    this.cancelLookAroundReset();
+    this._lookAroundActive = false;
     this.render();
     void this.loadEvents();
     if (this.isConnected) {
@@ -333,6 +347,7 @@ class MultiDayCalendarCard extends HTMLElement {
       this._dayRolloverTimerId = undefined;
     }
     this.cancelRecoveryRefresh();
+    this.cancelLookAroundReset();
     this.watchConnection();
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
@@ -546,6 +561,78 @@ class MultiDayCalendarCard extends HTMLElement {
     });
   }
 
+  private cancelLookAroundReset(): void {
+    if (this._lookAroundResetTimerId !== undefined) {
+      clearTimeout(this._lookAroundResetTimerId);
+      this._lookAroundResetTimerId = undefined;
+    }
+    if (this._lookAroundAnimationFrameId !== undefined) {
+      cancelAnimationFrame(this._lookAroundAnimationFrameId);
+      this._lookAroundAnimationFrameId = undefined;
+    }
+  }
+
+  private animateLookAroundScroll(viewport: HTMLElement, target: number, durationMs: number, easing: (progress: number) => number): void {
+    if (this._lookAroundAnimationFrameId !== undefined) cancelAnimationFrame(this._lookAroundAnimationFrameId);
+    const start = viewport.scrollLeft;
+    const startedAt = performance.now();
+    const step = (now: number): void => {
+      const progress = Math.min(1, (now - startedAt) / durationMs);
+      viewport.scrollLeft = start + (target - start) * easing(progress);
+      if (progress < 1) {
+        this._lookAroundAnimationFrameId = requestAnimationFrame(step);
+      } else {
+        this._lookAroundAnimationFrameId = undefined;
+      }
+    };
+    this._lookAroundAnimationFrameId = requestAnimationFrame(step);
+  }
+
+  private resetLookAround(): void {
+    const viewport = this.querySelector<HTMLElement>('.calendar-viewport.look-around');
+    if (!viewport) return;
+    this._lookAroundActive = false;
+    const center = (viewport.scrollWidth - viewport.clientWidth) / 2;
+    this.animateLookAroundScroll(viewport, center, 500, (progress) =>
+      progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2,
+    );
+  }
+
+  private scheduleLookAroundReset(): void {
+    if (this._lookAroundResetTimerId !== undefined) clearTimeout(this._lookAroundResetTimerId);
+    this._lookAroundResetTimerId = window.setTimeout(() => {
+      this._lookAroundResetTimerId = undefined;
+      this.resetLookAround();
+    }, LOOK_AROUND_RESET_DELAY_MS);
+  }
+
+  private bindLookAround(): void {
+    if (this._config?.look_around !== true) return;
+    const viewport = this.querySelector<HTMLElement>('.calendar-viewport.look-around');
+    if (!viewport) return;
+
+    const center = (): number => (viewport.scrollWidth - viewport.clientWidth) / 2;
+    requestAnimationFrame(() => { viewport.scrollLeft = center(); });
+    viewport.addEventListener('wheel', () => this.cancelLookAroundReset(), { passive: true });
+    viewport.addEventListener('touchstart', () => this.cancelLookAroundReset(), { passive: true });
+    viewport.addEventListener('scroll', () => {
+      if (this._lookAroundAnimationFrameId !== undefined) return;
+      const start = center();
+      const offset = scrollOffsetAfterDeadZone(start, viewport.scrollLeft);
+      if (offset === undefined && !this._lookAroundActive) {
+        viewport.scrollLeft = start;
+        return;
+      }
+      if (!this._lookAroundActive && offset !== undefined) {
+        this._lookAroundActive = true;
+        const target = start + clampLookAroundOffset(offset, viewport.clientWidth);
+        viewport.scrollLeft = start;
+        this.animateLookAroundScroll(viewport, target, 220, (progress) => 1 - (1 - progress) ** 3);
+      }
+      this.scheduleLookAroundReset();
+    });
+  }
+
   private render(): void {
     if (!this._config) return;
 
@@ -576,11 +663,23 @@ class MultiDayCalendarCard extends HTMLElement {
     });
 
     const days = visibleDays(range.start, config.days, config.skip_days);
+    const lookAroundDays = config.look_around
+      ? (() => {
+        const earliest = new Date(days[0]);
+        earliest.setDate(earliest.getDate() - config.days * 7);
+        const before = visibleDays(earliest, config.days * 2, config.skip_days)
+          .filter((day) => day.getTime() < days[0].getTime())
+          .slice(-config.days);
+        const afterStart = new Date(days[days.length - 1]);
+        afterStart.setDate(afterStart.getDate() + 1);
+        return [...before, ...days, ...visibleDays(afterStart, config.days, config.skip_days)];
+      })()
+      : days;
     const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
     const dayHeaderHeight = calendarHeaderHeight(
       Math.max(
         0,
-        ...days.map((day) =>
+        ...lookAroundDays.map((day) =>
           this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length,
         ),
       ),
@@ -615,9 +714,9 @@ class MultiDayCalendarCard extends HTMLElement {
       return `<div class="time-label" style="top: ${top}">${escapeHtml(label)}</div>`;
     }).join('');
 
-    const dayColumns = days
+    const dayColumns = lookAroundDays
       .map((day, index) => {
-        const hasSkippedDaysAfter = index < days.length - 1 && hasSkippedDaysBetween(day, days[index + 1]);
+        const hasSkippedDaysAfter = index < lookAroundDays.length - 1 && hasSkippedDaysBetween(day, lookAroundDays[index + 1]);
         const allDayPlacements = this._events
           .map(({ calendar, event }, eventIndex) => ({
             calendar,
@@ -726,7 +825,9 @@ class MultiDayCalendarCard extends HTMLElement {
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>
-            <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>
+            <div class="calendar-viewport${config.look_around ? ' look-around' : ''}">
+              <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}${config.look_around ? ' look-around' : ''}">${dayColumns}</div>
+            </div>
           </div>
         </div>
       </ha-card>
@@ -748,7 +849,10 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-labels { position: relative; height: calc(100% - var(--day-header-height)); }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
+      .calendar-viewport { min-width: 0; }
+      .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
       .day-columns { display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
+      .day-columns.look-around { width: 300%; grid-template-columns: repeat(${config.days * 3}, minmax(140px, 1fr)); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
       .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
@@ -775,6 +879,7 @@ class MultiDayCalendarCard extends HTMLElement {
     style.setAttribute('data-multiday-calendar-card', '');
     this.appendChild(style);
     this.bindEventActions();
+    this.bindLookAround();
   }
 }
 
