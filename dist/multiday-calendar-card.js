@@ -1564,9 +1564,11 @@ class MultiDayCalendarCard extends HTMLElement {
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>
-            <div class="calendar-viewport${config.look_around ? ' look-around' : ''}">
-              <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}${config.look_around ? ' look-around' : ''}">${dayColumns}</div>
-            </div>
+            ${config.look_around
+            ? `<div class="calendar-viewport look-around">
+                  <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''} look-around">${dayColumns}</div>
+                </div>`
+            : `<div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>`}
           </div>
         </div>
       </ha-card>
@@ -1588,8 +1590,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
       .calendar-viewport { min-width: 0; }
-      .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scroll-snap-type: x mandatory; scroll-behavior: smooth; }
-      .day-columns { display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
+      .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scroll-snap-type: x mandatory; }
+      .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.look-around { grid-template-columns: repeat(${lookAroundDays.length}, minmax(140px, calc(100% / ${config.days}))); }
       .day-columns.look-around .day-column { scroll-snap-align: start; scroll-snap-stop: always; }
       .day-columns.skipped-days-before { border-left-width: 2px; }
@@ -1617,7 +1619,8 @@ class MultiDayCalendarCard extends HTMLElement {
         style.setAttribute('data-multiday-calendar-card', '');
         this.appendChild(style);
         this.bindEventActions();
-        this.bindLookAround();
+        if (config.look_around)
+            this.bindLookAround();
     }
 }
 customElements.define('multiday-calendar-card', MultiDayCalendarCard);
