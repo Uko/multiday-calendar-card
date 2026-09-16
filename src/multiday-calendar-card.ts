@@ -27,6 +27,8 @@ import { parseTime } from './editor-model';
 import {
   LOOK_AROUND_BUFFER_DAYS,
   LOOK_AROUND_RESET_DELAY_MS,
+  LOOK_AROUND_SNAP_RELEASE_RATIO,
+  snapStepForScrollOffset,
   shouldRecenterLookAround,
 } from './look-around-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
@@ -218,6 +220,8 @@ class MultiDayCalendarCard extends HTMLElement {
   private _lookAroundAnchorDay?: Date;
   private _lookAroundResetTimerId?: number;
   private _lookAroundScrollEndTimerId?: number;
+  private _lookAroundAnimationFrameId?: number;
+  private _lookAroundAnimating = false;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
     if (!config?.type) {
@@ -571,6 +575,32 @@ class MultiDayCalendarCard extends HTMLElement {
       clearTimeout(this._lookAroundScrollEndTimerId);
       this._lookAroundScrollEndTimerId = undefined;
     }
+    if (this._lookAroundAnimationFrameId !== undefined) {
+      cancelAnimationFrame(this._lookAroundAnimationFrameId);
+      this._lookAroundAnimationFrameId = undefined;
+    }
+    this._lookAroundAnimating = false;
+  }
+
+  private animateLookAroundScroll(viewport: HTMLElement, left: number): void {
+    if (this._lookAroundAnimationFrameId !== undefined) cancelAnimationFrame(this._lookAroundAnimationFrameId);
+    const startLeft = viewport.scrollLeft;
+    const distance = left - startLeft;
+    const startedAt = performance.now();
+    const durationMs = 850;
+    this._lookAroundAnimating = true;
+    const animate = (now: number): void => {
+      const progress = Math.min(1, (now - startedAt) / durationMs);
+      const eased = progress < 0.5 ? 2 * progress * progress : 1 - ((-2 * progress + 2) ** 2) / 2;
+      viewport.scrollLeft = startLeft + distance * eased;
+      if (progress < 1) {
+        this._lookAroundAnimationFrameId = requestAnimationFrame(animate);
+      } else {
+        this._lookAroundAnimationFrameId = undefined;
+        this._lookAroundAnimating = false;
+      }
+    };
+    this._lookAroundAnimationFrameId = requestAnimationFrame(animate);
   }
 
   private resetLookAround(): void {
@@ -581,7 +611,8 @@ class MultiDayCalendarCard extends HTMLElement {
       this.render();
       return;
     }
-    viewport.scrollTo({ left: LOOK_AROUND_BUFFER_DAYS * (viewport.clientWidth / this._config!.days), behavior: 'smooth' });
+    const anchor = viewport.querySelector<HTMLElement>('[data-look-around-anchor]');
+    this.animateLookAroundScroll(viewport, anchor?.offsetLeft ?? viewport.scrollLeft);
   }
 
   private scheduleLookAroundReset(): void {
@@ -597,43 +628,56 @@ class MultiDayCalendarCard extends HTMLElement {
     const viewport = this.querySelector<HTMLElement>('.calendar-viewport.look-around');
     if (!viewport) return;
 
+    const columns = (): HTMLElement[] => Array.from(viewport.querySelectorAll<HTMLElement>('.day-column'));
     const anchorColumn = (): HTMLElement | null => viewport.querySelector('[data-look-around-anchor]');
     const dayWidth = (): number => anchorColumn()?.offsetWidth ?? viewport.clientWidth / this._config!.days;
-    const center = (): number => anchorColumn()?.offsetLeft ?? LOOK_AROUND_BUFFER_DAYS * dayWidth();
-    const firstVisibleIndex = (): number => {
-      const columns = Array.from(viewport.querySelectorAll<HTMLElement>('.day-column'));
-      return columns.reduce(
-        (nearest, column, index) =>
-          Math.abs(column.offsetLeft - viewport.scrollLeft) < Math.abs(columns[nearest].offsetLeft - viewport.scrollLeft)
-            ? index
-            : nearest,
-        0,
-      );
-    };
+    let lockedIndex = LOOK_AROUND_BUFFER_DAYS;
+    let lockedLeft = anchorColumn()?.offsetLeft ?? LOOK_AROUND_BUFFER_DAYS * dayWidth();
+    let accumulatedOffset = 0;
     let initialized = false;
+    let pinning = false;
+    const pinToLockedColumn = (): void => {
+      pinning = true;
+      viewport.scrollLeft = lockedLeft;
+      requestAnimationFrame(() => { pinning = false; });
+    };
     requestAnimationFrame(() => {
-      viewport.scrollLeft = center();
+      viewport.scrollLeft = lockedLeft;
       initialized = true;
     });
     const settle = (): void => {
-      if (!initialized) return;
-      const visibleIndex = firstVisibleIndex();
-      if (shouldRecenterLookAround(visibleIndex)) {
-        const anchor = this._lookAroundAnchorDay ?? visibleDays(
-          this._activeStartDay ?? this.resolveStartDay(),
-          this._config!.days,
-          this._config!.skip_days,
-        )[0];
-        const offset = visibleIndex - LOOK_AROUND_BUFFER_DAYS;
-        this._lookAroundAnchorDay = offset >= 0
-          ? visibleDays(anchor, offset + 1, this._config!.skip_days)[offset]
-          : visibleDaysBefore(anchor, -offset, this._config!.skip_days)[0];
-        this.render();
-        return;
-      }
+      if (!initialized || this._lookAroundAnimating) return;
       this.scheduleLookAroundReset();
     };
+    const cancelAnimation = (): void => {
+      if (this._lookAroundAnimating) this.cancelLookAroundReset();
+    };
+    viewport.addEventListener('wheel', cancelAnimation, { passive: true });
+    viewport.addEventListener('touchstart', cancelAnimation, { passive: true });
+    viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
     viewport.addEventListener('scroll', () => {
+      if (!initialized || pinning || this._lookAroundAnimating) return;
+      accumulatedOffset += viewport.scrollLeft - lockedLeft;
+      const step = snapStepForScrollOffset(accumulatedOffset, dayWidth());
+      if (step !== 0) {
+        lockedIndex += step;
+        const column = columns()[lockedIndex];
+        if (column && shouldRecenterLookAround(lockedIndex)) {
+          const anchor = this._lookAroundAnchorDay ?? visibleDays(
+            this._activeStartDay ?? this.resolveStartDay(),
+            this._config!.days,
+            this._config!.skip_days,
+          )[0];
+          this._lookAroundAnchorDay = step > 0
+            ? visibleDays(anchor, step + 1, this._config!.skip_days)[step]
+            : visibleDaysBefore(anchor, -step, this._config!.skip_days)[0];
+          this.render();
+          return;
+        }
+        if (column) lockedLeft = column.offsetLeft;
+        accumulatedOffset -= step * dayWidth() * LOOK_AROUND_SNAP_RELEASE_RATIO;
+      }
+      pinToLockedColumn();
       if (this._lookAroundScrollEndTimerId !== undefined) clearTimeout(this._lookAroundScrollEndTimerId);
       this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
     });
@@ -854,10 +898,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
       .calendar-viewport { min-width: 0; }
-      .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scroll-snap-type: x mandatory; }
+      .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
       .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.look-around { grid-template-columns: repeat(${lookAroundDays.length}, minmax(140px, calc(100% / ${config.days}))); }
-      .day-columns.look-around .day-column { scroll-snap-align: start; scroll-snap-stop: always; }
       .day-columns.skipped-days-before { border-left-width: 2px; }
       .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
