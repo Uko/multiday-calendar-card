@@ -1430,12 +1430,17 @@ class MultiDayCalendarCard extends HTMLElement {
         const anchorColumn = () => viewport.querySelector('[data-look-around-anchor]');
         let startLeft = 0;
         let initialized = false;
+        let originLocked = true;
+        let accumulatedOriginScroll = 0;
+        let restoringOriginPosition = false;
         const positionAtStartDay = () => {
             const anchor = anchorColumn();
             if (!anchor || viewport.scrollWidth <= viewport.clientWidth)
                 return false;
             startLeft = viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
             viewport.scrollLeft = startLeft;
+            originLocked = true;
+            accumulatedOriginScroll = 0;
             initialized = true;
             this._lookAroundResizeObserver?.disconnect();
             this._lookAroundResizeObserver = undefined;
@@ -1448,8 +1453,11 @@ class MultiDayCalendarCard extends HTMLElement {
         const settle = () => {
             if (!initialized || this._lookAroundAnimating)
                 return;
-            if (Math.abs(viewport.scrollLeft - startLeft) <= LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX)
+            if (!originLocked && Math.abs(viewport.scrollLeft - startLeft) <= LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX) {
                 viewport.scrollLeft = startLeft;
+                originLocked = true;
+                accumulatedOriginScroll = 0;
+            }
             const visibleColumns = columns();
             const visibleIndex = visibleColumns.reduce((nearest, column, index) => Math.abs((viewport.scrollLeft + column.getBoundingClientRect().left - viewport.getBoundingClientRect().left) - viewport.scrollLeft) <
                 Math.abs((viewport.scrollLeft + visibleColumns[nearest].getBoundingClientRect().left - viewport.getBoundingClientRect().left) - viewport.scrollLeft)
@@ -1473,9 +1481,24 @@ class MultiDayCalendarCard extends HTMLElement {
         viewport.addEventListener('wheel', cancelAnimation, { passive: true });
         viewport.addEventListener('touchstart', cancelAnimation, { passive: true });
         viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
-        viewport.addEventListener('scroll', () => {
-            if (!initialized || this._lookAroundAnimating)
+        viewport.addEventListener('scroll', (event) => {
+            event.stopPropagation();
+            if (!initialized || this._lookAroundAnimating || restoringOriginPosition)
                 return;
+            if (originLocked) {
+                const delta = viewport.scrollLeft - startLeft;
+                if (delta === 0)
+                    return;
+                accumulatedOriginScroll += delta;
+                if (Math.abs(accumulatedOriginScroll) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX) {
+                    restoringOriginPosition = true;
+                    viewport.scrollLeft = startLeft;
+                    requestAnimationFrame(() => { restoringOriginPosition = false; });
+                    return;
+                }
+                originLocked = false;
+                viewport.scrollLeft = startLeft + accumulatedOriginScroll;
+            }
             if (this._lookAroundScrollEndTimerId !== undefined)
                 clearTimeout(this._lookAroundScrollEndTimerId);
             this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
@@ -1664,6 +1687,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
       .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.look-around { grid-template-columns: repeat(${lookAroundDays.length}, minmax(140px, calc(100% / ${config.days}))); }
+      .day-columns.look-around [data-look-around-anchor] { box-shadow: inset 1px 0 var(--divider-color); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
       .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
