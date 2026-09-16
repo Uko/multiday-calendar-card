@@ -27,8 +27,6 @@ import { parseTime } from './editor-model';
 import {
   LOOK_AROUND_BUFFER_DAYS,
   LOOK_AROUND_RESET_DELAY_MS,
-  LOOK_AROUND_SNAP_RELEASE_RATIO,
-  snapStepForScrollOffset,
   shouldRecenterLookAround,
 } from './look-around-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
@@ -221,6 +219,7 @@ class MultiDayCalendarCard extends HTMLElement {
   private _lookAroundResetTimerId?: number;
   private _lookAroundScrollEndTimerId?: number;
   private _lookAroundAnimationFrameId?: number;
+  private _lookAroundResizeObserver?: ResizeObserver;
   private _lookAroundAnimating = false;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
@@ -579,6 +578,10 @@ class MultiDayCalendarCard extends HTMLElement {
       cancelAnimationFrame(this._lookAroundAnimationFrameId);
       this._lookAroundAnimationFrameId = undefined;
     }
+    if (this._lookAroundResizeObserver !== undefined) {
+      this._lookAroundResizeObserver.disconnect();
+      this._lookAroundResizeObserver = undefined;
+    }
     this._lookAroundAnimating = false;
   }
 
@@ -630,23 +633,45 @@ class MultiDayCalendarCard extends HTMLElement {
 
     const columns = (): HTMLElement[] => Array.from(viewport.querySelectorAll<HTMLElement>('.day-column'));
     const anchorColumn = (): HTMLElement | null => viewport.querySelector('[data-look-around-anchor]');
-    const dayWidth = (): number => anchorColumn()?.offsetWidth ?? viewport.clientWidth / this._config!.days;
-    let lockedIndex = LOOK_AROUND_BUFFER_DAYS;
-    let lockedLeft = anchorColumn()?.offsetLeft ?? LOOK_AROUND_BUFFER_DAYS * dayWidth();
-    let accumulatedOffset = 0;
+    let startLeft = 0;
     let initialized = false;
-    let pinning = false;
-    const pinToLockedColumn = (): void => {
-      pinning = true;
-      viewport.scrollLeft = lockedLeft;
-      requestAnimationFrame(() => { pinning = false; });
-    };
-    requestAnimationFrame(() => {
-      viewport.scrollLeft = lockedLeft;
+    const positionAtStartDay = (): boolean => {
+      const anchor = anchorColumn();
+      if (!anchor || viewport.scrollWidth <= viewport.clientWidth) return false;
+      startLeft = anchor.offsetLeft;
+      viewport.scrollLeft = startLeft;
       initialized = true;
-    });
+      this._lookAroundResizeObserver?.disconnect();
+      this._lookAroundResizeObserver = undefined;
+      return true;
+    };
+    this._lookAroundResizeObserver?.disconnect();
+    this._lookAroundResizeObserver = new ResizeObserver(() => { positionAtStartDay(); });
+    this._lookAroundResizeObserver.observe(viewport);
+    requestAnimationFrame(() => requestAnimationFrame(positionAtStartDay));
     const settle = (): void => {
       if (!initialized || this._lookAroundAnimating) return;
+      if (Math.abs(viewport.scrollLeft - startLeft) <= 10) viewport.scrollLeft = startLeft;
+      const visibleIndex = columns().reduce(
+        (nearest, column, index) =>
+          Math.abs(column.offsetLeft - viewport.scrollLeft) < Math.abs(columns()[nearest].offsetLeft - viewport.scrollLeft)
+            ? index
+            : nearest,
+        0,
+      );
+      if (shouldRecenterLookAround(visibleIndex)) {
+        const anchor = this._lookAroundAnchorDay ?? visibleDays(
+          this._activeStartDay ?? this.resolveStartDay(),
+          this._config!.days,
+          this._config!.skip_days,
+        )[0];
+        const offset = visibleIndex - LOOK_AROUND_BUFFER_DAYS;
+        this._lookAroundAnchorDay = offset >= 0
+          ? visibleDays(anchor, offset + 1, this._config!.skip_days)[offset]
+          : visibleDaysBefore(anchor, -offset, this._config!.skip_days)[0];
+        this.render();
+        return;
+      }
       this.scheduleLookAroundReset();
     };
     const cancelAnimation = (): void => {
@@ -656,28 +681,7 @@ class MultiDayCalendarCard extends HTMLElement {
     viewport.addEventListener('touchstart', cancelAnimation, { passive: true });
     viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
     viewport.addEventListener('scroll', () => {
-      if (!initialized || pinning || this._lookAroundAnimating) return;
-      accumulatedOffset += viewport.scrollLeft - lockedLeft;
-      const step = snapStepForScrollOffset(accumulatedOffset, dayWidth());
-      if (step !== 0) {
-        lockedIndex += step;
-        const column = columns()[lockedIndex];
-        if (column && shouldRecenterLookAround(lockedIndex)) {
-          const anchor = this._lookAroundAnchorDay ?? visibleDays(
-            this._activeStartDay ?? this.resolveStartDay(),
-            this._config!.days,
-            this._config!.skip_days,
-          )[0];
-          this._lookAroundAnchorDay = step > 0
-            ? visibleDays(anchor, step + 1, this._config!.skip_days)[step]
-            : visibleDaysBefore(anchor, -step, this._config!.skip_days)[0];
-          this.render();
-          return;
-        }
-        if (column) lockedLeft = column.offsetLeft;
-        accumulatedOffset -= step * dayWidth() * LOOK_AROUND_SNAP_RELEASE_RATIO;
-      }
-      pinToLockedColumn();
+      if (!initialized || this._lookAroundAnimating) return;
       if (this._lookAroundScrollEndTimerId !== undefined) clearTimeout(this._lookAroundScrollEndTimerId);
       this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
     });

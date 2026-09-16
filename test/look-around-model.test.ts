@@ -5,7 +5,6 @@ import {
   LOOK_AROUND_BUFFER_DAYS,
   LOOK_AROUND_RECENTER_MARGIN_DAYS,
   LOOK_AROUND_RESET_DELAY_MS,
-  snapStepForScrollOffset,
   shouldRecenterLookAround,
 } from '../src/look-around-model';
 
@@ -20,10 +19,4 @@ test('look-around keeps a large virtual date buffer and recenters before the use
   assert.equal(shouldRecenterLookAround(12), false);
   assert.equal(shouldRecenterLookAround(90), false);
   assert.equal(shouldRecenterLookAround(169), true);
-});
-
-test('look-around releases a magnetic date snap only after a meaningful cumulative scroll distance', () => {
-  assert.equal(snapStepForScrollOffset(39, 120), 0);
-  assert.equal(snapStepForScrollOffset(42, 120), 1);
-  assert.equal(snapStepForScrollOffset(-42, 120), -1);
 });
