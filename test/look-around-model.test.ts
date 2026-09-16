@@ -9,7 +9,7 @@ import {
 
 test('look-around waits 30 seconds after horizontal scrolling before returning to its start-day position', () => {
   assert.equal(LOOK_AROUND_RESET_DELAY_MS, 30_000);
-  assert.equal(LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX, 20);
+  assert.equal(LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX, 30);
 });
 
 test('look-around keeps a large fixed virtual date buffer around the configured start day', () => {

@@ -479,7 +479,7 @@ function editorWarnings(config) {
 
 const LOOK_AROUND_RESET_DELAY_MS = 30_000;
 /** Snap to the configured start day only when resting within this distance. */
-const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 20;
+const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
 /** Number of rendered dates on each side of the active date window. */
 const LOOK_AROUND_BUFFER_DAYS = 90;
 
@@ -1424,6 +1424,15 @@ class MultiDayCalendarCard extends HTMLElement {
         if (!viewport)
             return;
         const anchorColumn = () => viewport.querySelector('[data-look-around-anchor]');
+        const recenterButton = this.querySelector('.look-around-recenter');
+        const showRecenterButton = () => {
+            if (recenterButton)
+                recenterButton.hidden = false;
+        };
+        const hideRecenterButton = () => {
+            if (recenterButton)
+                recenterButton.hidden = true;
+        };
         let startLeft = 0;
         let initialized = false;
         let originLocked = true;
@@ -1434,6 +1443,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 return false;
             startLeft = viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
             viewport.scrollLeft = startLeft;
+            hideRecenterButton();
             originLocked = true;
             accumulatedOriginScroll = 0;
             initialized = true;
@@ -1464,8 +1474,15 @@ class MultiDayCalendarCard extends HTMLElement {
         };
         let lastTouchX;
         viewport.addEventListener('look-around-reset', () => {
+            hideRecenterButton();
             originLocked = true;
             accumulatedOriginScroll = 0;
+        });
+        recenterButton?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.cancelLookAroundReset();
+            this.resetLookAround();
         });
         viewport.addEventListener('wheel', (event) => {
             cancelAnimation();
@@ -1501,6 +1518,10 @@ class MultiDayCalendarCard extends HTMLElement {
         viewport.addEventListener('scroll', () => {
             if (!initialized || this._lookAroundAnimating)
                 return;
+            if (Math.abs(viewport.scrollLeft - startLeft) < 0.5)
+                hideRecenterButton();
+            else
+                showRecenterButton();
             if (this._lookAroundScrollEndTimerId !== undefined)
                 clearTimeout(this._lookAroundScrollEndTimerId);
             this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
@@ -1656,6 +1677,7 @@ class MultiDayCalendarCard extends HTMLElement {
           ${titlePlacement.bodyTitle ? `<h1 class="fixed-height-title">${escapeHtml(titlePlacement.bodyTitle)}</h1>` : ''}
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
+            ${config.look_around ? '<button class="look-around-recenter" type="button" hidden title="Return to start day" aria-label="Return to start day"><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' : ''}
             <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}" style="--day-header-height: ${dayHeaderHeight}px;${fixedHeight ? '' : ` height: ${timelineHeight + dayHeaderHeight}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
@@ -1677,7 +1699,11 @@ class MultiDayCalendarCard extends HTMLElement {
       .fixed-height-title { flex: 0 0 auto; margin: 8px 0 16px; font-size: 24px; font-weight: 400; line-height: 1.2; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
-      .schedule { display: grid; grid-template-columns: ${measuredTimeAxisWidth}px minmax(0, 1fr); min-width: 460px; }
+      .schedule { position: relative; display: grid; grid-template-columns: ${measuredTimeAxisWidth}px minmax(0, 1fr); min-width: 460px; }
+      .look-around-recenter { position: absolute; z-index: 4; top: 4px; left: 4px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--divider-color); border-radius: 50%; background: var(--card-background-color); color: var(--primary-text-color); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; }
+      .look-around-recenter:hover { background: var(--secondary-background-color); }
+      .look-around-recenter:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+      .look-around-recenter ha-icon { width: 20px; height: 20px; }
       .schedule.fixed-height { flex: 1; min-height: 0; }
       .time-axis { position: relative; color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; }
       .time-axis.fixed-height { height: 100%; }
@@ -1688,7 +1714,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .calendar-viewport { min-width: 0; }
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
       .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
-      .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, minmax(140px, calc(100% / ${config.days}))); }
+      .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, minmax(0, calc(100% / ${config.days}))); }
       .day-columns.look-around.skipped-days-before { border-left: none; }
       .day-columns.look-around [data-look-around-anchor] { box-shadow: inset 1px 0 var(--divider-color); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
