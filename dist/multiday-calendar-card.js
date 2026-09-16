@@ -1098,7 +1098,7 @@ class MultiDayCalendarCard extends HTMLElement {
         if (!calendars.every((calendar) => calendar.entity.startsWith('calendar.'))) {
             throw new Error('Every calendars entry requires a calendar.* entity');
         }
-        this._config = {
+        const nextConfig = {
             ...DEFAULT_CONFIG,
             ...config,
             days,
@@ -1118,6 +1118,11 @@ class MultiDayCalendarCard extends HTMLElement {
             location_map_provider: locationMapProvider(config.location_map_provider),
             custom_nominatim_url: customNominatimUrl(config.custom_nominatim_url),
         };
+        const configurationKey = JSON.stringify(nextConfig);
+        if (configurationKey === this._configurationKey)
+            return;
+        this._configurationKey = configurationKey;
+        this._config = nextConfig;
         this._requestKey = undefined;
         this._activeStartDay = undefined;
         this.onNewStartDate(this.resolveStartDay());

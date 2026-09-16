@@ -71,6 +71,30 @@ test('configured start_day_entity reloads only when its calendar date changes', 
   assert.deepEqual(reloads, [false]);
 });
 
+test('repeated equivalent card configuration does not recreate the calendar during editor updates', () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  const card = new CalendarCard() as FakeHTMLElement & {
+    setConfig(config: { type: string; calendars: [] }): void;
+    render(): void;
+    loadEvents(force?: boolean): Promise<void>;
+  };
+  let renderCount = 0;
+  let loadCount = 0;
+  card.render = () => { renderCount += 1; };
+  card.loadEvents = async () => { loadCount += 1; };
+  const config = { type: 'custom:multiday-calendar-card', calendars: [] };
+
+  card.setConfig(config);
+  renderCount = 0;
+  loadCount = 0;
+  card.setConfig({ ...config, calendars: [] });
+
+  assert.equal(renderCount, 0);
+  assert.equal(loadCount, 0);
+});
+
 test('Home Assistant state updates do not re-render the calendar', () => {
   const CalendarCard = elementRegistry.get('multiday-calendar-card');
   assert.ok(CalendarCard);

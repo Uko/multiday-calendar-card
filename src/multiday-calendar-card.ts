@@ -203,6 +203,7 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   private _config?: NormalizedCardConfig;
+  private _configurationKey?: string;
   private _hass?: HomeAssistantLike;
   private _events: LoadedEvent[] = [];
   private _loading = false;
@@ -278,7 +279,7 @@ class MultiDayCalendarCard extends HTMLElement {
       throw new Error('Every calendars entry requires a calendar.* entity');
     }
 
-    this._config = {
+    const nextConfig: NormalizedCardConfig = {
       ...DEFAULT_CONFIG,
       ...config,
       days,
@@ -298,6 +299,10 @@ class MultiDayCalendarCard extends HTMLElement {
       location_map_provider: locationMapProvider(config.location_map_provider),
       custom_nominatim_url: customNominatimUrl(config.custom_nominatim_url),
     };
+    const configurationKey = JSON.stringify(nextConfig);
+    if (configurationKey === this._configurationKey) return;
+    this._configurationKey = configurationKey;
+    this._config = nextConfig;
     this._requestKey = undefined;
     this._activeStartDay = undefined;
     this.onNewStartDate(this.resolveStartDay());
