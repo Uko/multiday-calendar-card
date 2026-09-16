@@ -1432,7 +1432,6 @@ class MultiDayCalendarCard extends HTMLElement {
         let initialized = false;
         let originLocked = true;
         let accumulatedOriginScroll = 0;
-        let restoringOriginPosition = false;
         const positionAtStartDay = () => {
             const anchor = anchorColumn();
             if (!anchor || viewport.scrollWidth <= viewport.clientWidth)
@@ -1474,31 +1473,53 @@ class MultiDayCalendarCard extends HTMLElement {
             }
             this.scheduleLookAroundReset();
         };
+        const releaseOriginLock = (delta) => {
+            accumulatedOriginScroll += delta;
+            if (Math.abs(accumulatedOriginScroll) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX)
+                return;
+            originLocked = false;
+            viewport.scrollLeft = startLeft + accumulatedOriginScroll;
+            accumulatedOriginScroll = 0;
+        };
         const cancelAnimation = () => {
             if (this._lookAroundAnimating)
                 this.cancelLookAroundReset();
         };
-        viewport.addEventListener('wheel', cancelAnimation, { passive: true });
-        viewport.addEventListener('touchstart', cancelAnimation, { passive: true });
-        viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
-        viewport.addEventListener('scroll', (event) => {
-            event.stopPropagation();
-            if (!initialized || this._lookAroundAnimating || restoringOriginPosition)
+        let lastTouchX;
+        viewport.addEventListener('wheel', (event) => {
+            cancelAnimation();
+            if (!originLocked)
                 return;
-            if (originLocked) {
-                const delta = viewport.scrollLeft - startLeft;
-                if (delta === 0)
-                    return;
-                accumulatedOriginScroll += delta;
-                if (Math.abs(accumulatedOriginScroll) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX) {
-                    restoringOriginPosition = true;
-                    viewport.scrollLeft = startLeft;
-                    requestAnimationFrame(() => { restoringOriginPosition = false; });
-                    return;
-                }
-                originLocked = false;
-                viewport.scrollLeft = startLeft + accumulatedOriginScroll;
-            }
+            const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+            if (delta === 0)
+                return;
+            event.preventDefault();
+            event.stopPropagation();
+            releaseOriginLock(delta);
+        }, { passive: false });
+        viewport.addEventListener('touchstart', (event) => {
+            cancelAnimation();
+            lastTouchX = event.touches[0]?.clientX;
+        }, { passive: true });
+        viewport.addEventListener('touchmove', (event) => {
+            if (!originLocked)
+                return;
+            const touchX = event.touches[0]?.clientX;
+            if (touchX === undefined || lastTouchX === undefined)
+                return;
+            const delta = lastTouchX - touchX;
+            lastTouchX = touchX;
+            if (delta === 0)
+                return;
+            event.preventDefault();
+            event.stopPropagation();
+            releaseOriginLock(delta);
+        }, { passive: false });
+        viewport.addEventListener('touchend', () => { lastTouchX = undefined; }, { passive: true });
+        viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
+        viewport.addEventListener('scroll', () => {
+            if (!initialized || this._lookAroundAnimating)
+                return;
             if (this._lookAroundScrollEndTimerId !== undefined)
                 clearTimeout(this._lookAroundScrollEndTimerId);
             this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
