@@ -478,6 +478,8 @@ function editorWarnings(config) {
 }
 
 const LOOK_AROUND_RESET_DELAY_MS = 30_000;
+/** Snap to the configured start day only when resting within this distance. */
+const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 20;
 /** Number of rendered dates on each side of the active date window. */
 const LOOK_AROUND_BUFFER_DAYS = 90;
 /** Rebuild the virtual date window before the native scroll position reaches an edge. */
@@ -1405,7 +1407,10 @@ class MultiDayCalendarCard extends HTMLElement {
             return;
         }
         const anchor = viewport.querySelector('[data-look-around-anchor]');
-        this.animateLookAroundScroll(viewport, anchor?.offsetLeft ?? viewport.scrollLeft);
+        const left = anchor === null
+            ? viewport.scrollLeft
+            : viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
+        this.animateLookAroundScroll(viewport, left);
     }
     scheduleLookAroundReset() {
         if (this._lookAroundResetTimerId !== undefined)
@@ -1429,7 +1434,7 @@ class MultiDayCalendarCard extends HTMLElement {
             const anchor = anchorColumn();
             if (!anchor || viewport.scrollWidth <= viewport.clientWidth)
                 return false;
-            startLeft = anchor.offsetLeft;
+            startLeft = viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
             viewport.scrollLeft = startLeft;
             initialized = true;
             this._lookAroundResizeObserver?.disconnect();
@@ -1443,9 +1448,11 @@ class MultiDayCalendarCard extends HTMLElement {
         const settle = () => {
             if (!initialized || this._lookAroundAnimating)
                 return;
-            if (Math.abs(viewport.scrollLeft - startLeft) <= 10)
+            if (Math.abs(viewport.scrollLeft - startLeft) <= LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX)
                 viewport.scrollLeft = startLeft;
-            const visibleIndex = columns().reduce((nearest, column, index) => Math.abs(column.offsetLeft - viewport.scrollLeft) < Math.abs(columns()[nearest].offsetLeft - viewport.scrollLeft)
+            const visibleColumns = columns();
+            const visibleIndex = visibleColumns.reduce((nearest, column, index) => Math.abs((viewport.scrollLeft + column.getBoundingClientRect().left - viewport.getBoundingClientRect().left) - viewport.scrollLeft) <
+                Math.abs((viewport.scrollLeft + visibleColumns[nearest].getBoundingClientRect().left - viewport.getBoundingClientRect().left) - viewport.scrollLeft)
                 ? index
                 : nearest, 0);
             if (shouldRecenterLookAround(visibleIndex)) {
