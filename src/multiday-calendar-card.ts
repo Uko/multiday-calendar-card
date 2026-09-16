@@ -597,18 +597,34 @@ class MultiDayCalendarCard extends HTMLElement {
     const viewport = this.querySelector<HTMLElement>('.calendar-viewport.look-around');
     if (!viewport) return;
 
-    const dayWidth = (): number => viewport.clientWidth / this._config!.days;
-    const center = (): number => LOOK_AROUND_BUFFER_DAYS * dayWidth();
-    requestAnimationFrame(() => { viewport.scrollLeft = center(); });
+    const anchorColumn = (): HTMLElement | null => viewport.querySelector('[data-look-around-anchor]');
+    const dayWidth = (): number => anchorColumn()?.offsetWidth ?? viewport.clientWidth / this._config!.days;
+    const center = (): number => anchorColumn()?.offsetLeft ?? LOOK_AROUND_BUFFER_DAYS * dayWidth();
+    const firstVisibleIndex = (): number => {
+      const columns = Array.from(viewport.querySelectorAll<HTMLElement>('.day-column'));
+      return columns.reduce(
+        (nearest, column, index) =>
+          Math.abs(column.offsetLeft - viewport.scrollLeft) < Math.abs(columns[nearest].offsetLeft - viewport.scrollLeft)
+            ? index
+            : nearest,
+        0,
+      );
+    };
+    let initialized = false;
+    requestAnimationFrame(() => {
+      viewport.scrollLeft = center();
+      initialized = true;
+    });
     const settle = (): void => {
-      const firstVisibleIndex = Math.round(viewport.scrollLeft / dayWidth());
-      if (shouldRecenterLookAround(firstVisibleIndex)) {
+      if (!initialized) return;
+      const visibleIndex = firstVisibleIndex();
+      if (shouldRecenterLookAround(visibleIndex)) {
         const anchor = this._lookAroundAnchorDay ?? visibleDays(
           this._activeStartDay ?? this.resolveStartDay(),
           this._config!.days,
           this._config!.skip_days,
         )[0];
-        const offset = firstVisibleIndex - LOOK_AROUND_BUFFER_DAYS;
+        const offset = visibleIndex - LOOK_AROUND_BUFFER_DAYS;
         this._lookAroundAnchorDay = offset >= 0
           ? visibleDays(anchor, offset + 1, this._config!.skip_days)[offset]
           : visibleDaysBefore(anchor, -offset, this._config!.skip_days)[0];
@@ -776,7 +792,7 @@ class MultiDayCalendarCard extends HTMLElement {
         const nowLine = nowLineTop === undefined
           ? ''
           : `<div class="now-line" style="top: ${nowLineTop}%"></div>`;
-        return `<section class="day-column${hasSkippedDaysAfter ? ' skipped-days-after' : ''}" data-day="${localDateKey(day)}">
+        return `<section class="day-column${hasSkippedDaysAfter ? ' skipped-days-after' : ''}" data-day="${localDateKey(day)}"${config.look_around && index === LOOK_AROUND_BUFFER_DAYS ? ' data-look-around-anchor' : ''}>
           <header class="day-header${isToday ? ' today' : ''}" style="--day-header-height: ${dayHeaderHeight}px">
             <div class="day-name">${escapeHtml(dateFormatter.format(day))}</div>
             ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
