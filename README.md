@@ -100,7 +100,7 @@ calendars:
 | `start_time` | `"06:00"` | First visible time, in `HH:mm` format. |
 | `end_time` | `"22:00"` | Last visible time, in `HH:mm` format. It must be after `start_time`; `"24:00"` is accepted as the end of the day. |
 | `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. |
-| `look_around` | `false` | Enables the horizontal-scroll prototype for trackpads, touchscreens, and horizontal mouse wheels. Movement must exceed 10px before the pane moves; it returns to the configured start day after 30 seconds. It renders blank adjacent date grids only—no additional calendar requests or events are loaded. |
+| `look_around` | `false` | Enables native horizontal scrolling for trackpads, touchscreens, and horizontal mouse wheels. CSS scroll snap settles the grid on complete day columns. The card keeps a virtual date window and recenters it as needed, so scrolling is not bounded by a pre-rendered three-day pane. It still renders date grids only—no additional calendar requests or events are loaded. |
 | `show_now_line` | `true` | Show or hide the current-time line. |
 | `skip_days` | `[]` | Two-letter day names to omit: `mo`, `tu`, `we`, `th`, `fr`, `sa`, `su`. The card keeps looking forward until it has displayed `days` non-skipped dates, marks a skipped-date gap with a thicker divider, and uses a 2px leading border when today itself is skipped. It cannot contain all seven names. |
 | `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. |

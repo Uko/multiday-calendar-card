@@ -21,6 +21,7 @@ import {
   hasSkippedDaysBeforeFirstVisibleDay,
   normalizeSkipDays,
   visibleDays,
+  visibleDaysBefore,
 } from '../src/calendar-model';
 
 test('buildCalendarEventsPath encodes the calendar entity and date range', () => {
@@ -76,6 +77,16 @@ test('visibleDays skips configured two-letter day names and keeps the requested 
     [2026, 6, 8],
     [2026, 6, 9],
     [2026, 6, 10],
+  ]);
+});
+
+test('visibleDaysBefore returns displayed dates before an anchor while honoring skipped days', () => {
+  const days = visibleDaysBefore(new Date(2026, 6, 6), 3, ['sa', 'su']);
+
+  assert.deepEqual(days.map((day) => [day.getFullYear(), day.getMonth(), day.getDate()]), [
+    [2026, 6, 1],
+    [2026, 6, 2],
+    [2026, 6, 3],
   ]);
 });
 

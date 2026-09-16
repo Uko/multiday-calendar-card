@@ -44,6 +44,21 @@ export function visibleDays(now: Date, days: number, skipDays: readonly DayName[
   return visible;
 }
 
+/** Return exactly `days` displayed local dates immediately before an anchor date. */
+export function visibleDaysBefore(anchor: Date, days: number, skipDays: readonly DayName[] = []): Date[] {
+  const skipped = new Set(skipDays);
+  const cursor = new Date(anchor);
+  cursor.setHours(0, 0, 0, 0);
+  const visible: Date[] = [];
+
+  while (visible.length < days) {
+    cursor.setDate(cursor.getDate() - 1);
+    if (!skipped.has(dayName(cursor))) visible.push(new Date(cursor));
+  }
+
+  return visible.reverse();
+}
+
 /** Use local calendar dates so daylight-saving transitions do not affect gap detection. */
 export function hasSkippedDaysBetween(left: Date, right: Date): boolean {
   const localCalendarDay = (date: Date): number =>

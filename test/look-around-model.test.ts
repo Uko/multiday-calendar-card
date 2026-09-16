@@ -2,27 +2,21 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
-  LOOK_AROUND_DEAD_ZONE_PX,
+  LOOK_AROUND_BUFFER_DAYS,
+  LOOK_AROUND_RECENTER_MARGIN_DAYS,
   LOOK_AROUND_RESET_DELAY_MS,
-  clampLookAroundOffset,
-  scrollOffsetAfterDeadZone,
+  shouldRecenterLookAround,
 } from '../src/look-around-model';
 
-test('look-around ignores small native scroll movement until it passes the 10px dead zone', () => {
-  assert.equal(LOOK_AROUND_DEAD_ZONE_PX, 10);
-  assert.equal(scrollOffsetAfterDeadZone(200, 209), undefined);
-  assert.equal(scrollOffsetAfterDeadZone(200, 190), undefined);
-  assert.equal(scrollOffsetAfterDeadZone(200, 210), undefined);
-  assert.equal(scrollOffsetAfterDeadZone(200, 211), 11);
-  assert.equal(scrollOffsetAfterDeadZone(200, 189), -11);
-});
-
-test('look-around waits 30 seconds after a horizontal scroll before returning to its start-day position', () => {
+test('look-around waits 30 seconds after horizontal scrolling before returning to its start-day position', () => {
   assert.equal(LOOK_AROUND_RESET_DELAY_MS, 30_000);
 });
 
-test('look-around keeps the adjacent blank date grids within one viewport width', () => {
-  assert.equal(clampLookAroundOffset(-900, 320), -320);
-  assert.equal(clampLookAroundOffset(120, 320), 120);
-  assert.equal(clampLookAroundOffset(900, 320), 320);
+test('look-around keeps a large virtual date buffer and recenters before the user reaches an edge', () => {
+  assert.equal(LOOK_AROUND_BUFFER_DAYS, 90);
+  assert.equal(LOOK_AROUND_RECENTER_MARGIN_DAYS, 12);
+  assert.equal(shouldRecenterLookAround(11), true);
+  assert.equal(shouldRecenterLookAround(12), false);
+  assert.equal(shouldRecenterLookAround(90), false);
+  assert.equal(shouldRecenterLookAround(169), true);
 });
