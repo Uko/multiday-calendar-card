@@ -483,6 +483,9 @@ const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
 /** Number of rendered dates on each side of the active date window. */
 const LOOK_AROUND_BUFFER_DAYS = 90;
 
+// Generated from src/icons/recenter.svg; do not edit manually.
+const RECENTER_ICON_SVG = "<svg class=\"look-around-recenter-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\">\n  <path d=\"M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z\" />\n</svg>\n";
+
 const NOMINATIM_LOOKUP_INTERVAL_MS = 1_000;
 const geocodeCache = new Map();
 let lastNominatimLookupMs = 0;
@@ -1677,7 +1680,7 @@ class MultiDayCalendarCard extends HTMLElement {
           ${titlePlacement.bodyTitle ? `<h1 class="fixed-height-title">${escapeHtml(titlePlacement.bodyTitle)}</h1>` : ''}
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
-            ${config.look_around ? '<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day"><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' : ''}
+            ${config.look_around ? `<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day">${RECENTER_ICON_SVG}</button>` : ''}
             <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}" style="--day-header-height: ${dayHeaderHeight}px;${fixedHeight ? '' : ` height: ${timelineHeight + dayHeaderHeight}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
@@ -1700,11 +1703,11 @@ class MultiDayCalendarCard extends HTMLElement {
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
       .schedule { --time-axis-width: ${measuredTimeAxisWidth}px; position: relative; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); min-width: 460px; }
-      .look-around-recenter { position: absolute; z-index: 4; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear; }
-      .look-around-recenter.is-hidden { visibility: hidden; pointer-events: none; opacity: 0; transform: scale(0.9); transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 140ms; }
+      .look-around-recenter { position: absolute; z-index: 4; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear; }
+      .look-around-recenter.is-hidden { visibility: hidden; pointer-events: none; opacity: 0; transform: scale(0.9); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear 280ms; }
       .look-around-recenter:hover { background: color-mix(in srgb, var(--primary-color) 85%, black); }
       .look-around-recenter:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-      .look-around-recenter ha-icon { display: block; flex: 0 0 auto; width: 18px; height: 18px; }
+      .look-around-recenter-icon { display: block; flex: 0 0 auto; width: 18px; height: 18px; fill: currentColor; }
       .schedule.fixed-height { flex: 1; min-height: 0; }
       .time-axis { position: relative; color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; }
       .time-axis.fixed-height { height: 100%; }

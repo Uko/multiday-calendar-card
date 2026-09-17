@@ -6,6 +6,9 @@
   "type": "module",
   "main": "dist/multiday-calendar-card.js",
   "scripts": {
+    "generate:svg": "node scripts/generate-svg-module.mjs",
+    "prebuild": "npm run generate:svg",
+    "pretest": "npm run generate:svg",
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "check": "tsc --noEmit",

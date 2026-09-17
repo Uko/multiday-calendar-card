@@ -31,6 +31,7 @@ import {
 } from './look-around-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
 import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
+import { RECENTER_ICON_SVG } from './icons/recenter.generated';
 import type { EventDetailDialogParams } from './multiday-calendar-event-dialog';
 import './multiday-calendar-event-dialog';
 import './multiday-calendar-card-editor';
@@ -910,7 +911,7 @@ class MultiDayCalendarCard extends HTMLElement {
           ${titlePlacement.bodyTitle ? `<h1 class="fixed-height-title">${escapeHtml(titlePlacement.bodyTitle)}</h1>` : ''}
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
-            ${config.look_around ? '<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day"><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' : ''}
+            ${config.look_around ? `<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day">${RECENTER_ICON_SVG}</button>` : ''}
             <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}" style="--day-header-height: ${dayHeaderHeight}px;${fixedHeight ? '' : ` height: ${timelineHeight + dayHeaderHeight}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
@@ -934,11 +935,11 @@ class MultiDayCalendarCard extends HTMLElement {
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
       .schedule { --time-axis-width: ${measuredTimeAxisWidth}px; position: relative; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); min-width: 460px; }
-      .look-around-recenter { position: absolute; z-index: 4; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear; }
-      .look-around-recenter.is-hidden { visibility: hidden; pointer-events: none; opacity: 0; transform: scale(0.9); transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 140ms; }
+      .look-around-recenter { position: absolute; z-index: 4; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear; }
+      .look-around-recenter.is-hidden { visibility: hidden; pointer-events: none; opacity: 0; transform: scale(0.9); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear 280ms; }
       .look-around-recenter:hover { background: color-mix(in srgb, var(--primary-color) 85%, black); }
       .look-around-recenter:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-      .look-around-recenter ha-icon { display: block; flex: 0 0 auto; width: 18px; height: 18px; }
+      .look-around-recenter-icon { display: block; flex: 0 0 auto; width: 18px; height: 18px; fill: currentColor; }
       .schedule.fixed-height { flex: 1; min-height: 0; }
       .time-axis { position: relative; color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; }
       .time-axis.fixed-height { height: 100%; }
