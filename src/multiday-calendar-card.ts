@@ -630,7 +630,7 @@ class MultiDayCalendarCard extends HTMLElement {
       : viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
     const top = verticalAnchor === null
       ? viewport.scrollTop
-      : viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+      : Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector<HTMLElement>('.day-header')?.getBoundingClientRect().height ?? 0));
     this.animateLookAroundScroll(viewport, left, top, () => {
       viewport.dispatchEvent(new Event('look-around-reset'));
     });
@@ -676,7 +676,7 @@ class MultiDayCalendarCard extends HTMLElement {
         viewport.scrollLeft = startLeft;
       }
       if (vertical && verticalAnchor) {
-        startTop = viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+        startTop = Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector<HTMLElement>('.day-header')?.getBoundingClientRect().height ?? 0));
         viewport.scrollTop = startTop;
       }
       hideRecenterButton();
@@ -825,7 +825,7 @@ class MultiDayCalendarCard extends HTMLElement {
       { length: Math.floor((endMinutes - Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes) / config.slot_minutes) + 1 },
       (_, index) => Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes + index * config.slot_minutes,
     )
-      .filter((minutes) => minutes > startMinutes && minutes < endMinutes)
+      .filter((minutes) => minutes > startMinutes && minutes <= endMinutes)
       .map((minutes) => `<div class="grid-line" style="top: ${((minutes - startMinutes) / minutesVisible) * 100}%"></div>`)
       .join('');
     const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -985,7 +985,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-axis-spacer { height: var(--day-header-height); border-bottom: ${CALENDAR_VISUAL_LAYOUT.timeAxisHeaderDivider ? '1px solid var(--divider-color)' : 'none'}; }
       .time-labels { position: relative; height: calc(100% - var(--day-header-height)); }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
-      .time-label:last-child { transform: translateY(-100%); }
+      .time-label:last-child { transform: translateY(-50%); }
+      .time-axis.look-around-vertical-axis::after { content: ''; position: absolute; inset: 0 0 auto; z-index: 2; height: var(--day-header-height); pointer-events: none; background: linear-gradient(to bottom, var(--card-background-color) 0, var(--card-background-color) calc(100% - 10px), transparent 100%); }
       .calendar-viewport { min-width: 0; }
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; container-type: inline-size; }
       .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height)); scrollbar-width: thin; }
