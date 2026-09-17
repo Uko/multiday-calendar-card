@@ -945,9 +945,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-100%); }
       .calendar-viewport { min-width: 0; }
-      .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+      .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; container-type: inline-size; }
       .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
-      .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, minmax(0, calc(100% / ${config.days}))); }
+      .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, calc(100cqw / ${config.days})); }
       .day-columns.look-around.skipped-days-before { border-left: none; }
       .day-columns.look-around [data-look-around-anchor] { box-shadow: inset 1px 0 var(--divider-color); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
