@@ -1426,9 +1426,12 @@ class MultiDayCalendarCard extends HTMLElement {
             return;
         const anchor = viewport.querySelector('[data-look-around-anchor]');
         const verticalAnchor = viewport.querySelector('[data-look-around-vertical-anchor]');
+        const nativeTimeAxisWidth = viewport.classList.contains('native-vertical-time-axis')
+            ? viewport.querySelector('.time-axis.native-vertical-time-axis')?.getBoundingClientRect().width ?? 0
+            : 0;
         const left = anchor === null
             ? viewport.scrollLeft
-            : viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
+            : viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left - nativeTimeAxisWidth;
         const top = verticalAnchor === null
             ? viewport.scrollTop
             : Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector('.day-header')?.getBoundingClientRect().height ?? 0) + 1);
@@ -1454,6 +1457,9 @@ class MultiDayCalendarCard extends HTMLElement {
         const vertical = hasVerticalLookAround(this._config.look_around);
         const anchorColumn = () => viewport.querySelector('[data-look-around-anchor]');
         const anchorVertical = () => viewport.querySelector('[data-look-around-vertical-anchor]');
+        const nativeTimeAxisWidth = () => viewport.classList.contains('native-vertical-time-axis')
+            ? viewport.querySelector('.time-axis.native-vertical-time-axis')?.getBoundingClientRect().width ?? 0
+            : 0;
         const recenterButton = this.querySelector('.look-around-recenter');
         const setRecenterButtonVisibility = (visible) => {
             if (!recenterButton)
@@ -1476,7 +1482,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 (vertical && (!verticalAnchor || viewport.scrollHeight <= viewport.clientHeight)))
                 return false;
             if (horizontal && horizontalAnchor) {
-                startLeft = viewport.scrollLeft + horizontalAnchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
+                startLeft = viewport.scrollLeft + horizontalAnchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left - nativeTimeAxisWidth();
                 viewport.scrollLeft = startLeft;
             }
             if (vertical && verticalAnchor) {
@@ -1580,7 +1586,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 timeAxisBottomFade?.classList.toggle('is-active', active);
         };
         viewport.addEventListener('scroll', () => {
-            if (vertical && timeLabels)
+            if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis'))
                 timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
             setTimeAxisBottomFadeActive(Math.abs(viewport.scrollTop - startTop) >= 0.5);
             if (!initialized || this._lookAroundAnimating)
@@ -1761,16 +1767,24 @@ class MultiDayCalendarCard extends HTMLElement {
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
             ${horizontalLookAround || verticalLookAround ? `<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day">${RECENTER_ICON_SVG}</button>` : ''}
-            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}${verticalLookAround ? ' look-around-vertical-axis' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px; --look-around-timeline-height: ${timelineHeight}px;${fixedHeight ? '' : ` height: ${verticalLookAround ? baseTimelineHeight + dayHeaderHeight + 7 : timelineHeight + dayHeaderHeight + 7}px;`}">
+            ${verticalLookAround ? '' : `<div class="time-axis ${fixedHeight ? 'fixed-height' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px; --look-around-timeline-height: ${timelineHeight}px;${fixedHeight ? '' : ` height: ${timelineHeight + dayHeaderHeight + 7}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
-            </div>
+            </div>`}
             <div class="time-axis-bottom-fade" aria-hidden="true"></div>
-            ${horizontalLookAround || verticalLookAround
-            ? `<div class="calendar-viewport${horizontalLookAround ? ' look-around' : ''}${verticalLookAround ? ' look-around-vertical' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px">
-                  <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}${horizontalLookAround ? ' look-around' : ''}${verticalLookAround ? ' look-around-vertical' : ''}">${dayColumns}</div>
+            ${verticalLookAround
+            ? `<div class="calendar-viewport native-vertical-time-axis${horizontalLookAround ? ' look-around' : ''} look-around-vertical" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px">
+                  <div class="time-axis native-vertical-time-axis ${fixedHeight ? 'fixed-height' : ''} look-around-vertical-axis" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px; --look-around-timeline-height: ${timelineHeight}px; height: ${timelineHeight + dayHeaderHeight + 7}px;">
+                    <div class="time-axis-spacer"></div>
+                    <div class="time-labels">${timeLabels}</div>
+                  </div>
+                  <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}${horizontalLookAround ? ' look-around' : ''} look-around-vertical">${dayColumns}</div>
                 </div>`
-            : `<div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>`}
+            : horizontalLookAround
+                ? `<div class="calendar-viewport look-around" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px">
+                    <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''} look-around">${dayColumns}</div>
+                  </div>`
+                : `<div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>`}
           </div>
         </div>
       </ha-card>
@@ -1802,10 +1816,14 @@ class MultiDayCalendarCard extends HTMLElement {
       .calendar-viewport { min-width: 0; }
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; container-type: inline-size; }
       .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height) + 7px); scrollbar-width: thin; }
+      .calendar-viewport.native-vertical-time-axis { display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); }
+      .calendar-viewport.native-vertical-time-axis > .time-axis { position: sticky; left: 0; z-index: 4; grid-column: 1; align-self: start; background: var(--card-background-color); }
+      .calendar-viewport.native-vertical-time-axis > .day-columns { grid-column: 2; min-width: 0; }
       .time-axis.look-around-vertical-axis { overflow: hidden; }
       .time-axis.look-around-vertical-axis .time-labels { height: var(--look-around-timeline-height); }
       .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(0, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, calc(100cqw / ${config.days})); }
+      .calendar-viewport.native-vertical-time-axis > .day-columns.look-around { grid-template-columns: repeat(${lookAroundDays.length}, calc((100cqw - var(--time-axis-width)) / ${config.days})); }
       .day-columns.look-around.skipped-days-before { border-left: none; }
       .day-columns.look-around-vertical:not(.look-around) { grid-template-columns: repeat(${config.days}, minmax(0, 1fr)); }
       .day-columns.look-around-vertical .day-header { position: sticky; top: 0; z-index: 3; background: var(--card-background-color); }
