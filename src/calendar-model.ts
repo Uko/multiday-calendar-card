@@ -368,9 +368,6 @@ export function eventPlacementForDay(
 
   const dayStart = new Date(day);
   dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
-
   const visibleStart = new Date(dayStart);
   visibleStart.setMinutes(visibleStartMinutes, 0, 0);
   const visibleEnd = new Date(dayStart);
@@ -378,7 +375,7 @@ export function eventPlacementForDay(
 
   const clippedStart = new Date(Math.max(start.getTime(), visibleStart.getTime()));
   const clippedEnd = new Date(
-    Math.min(end.getTime(), visibleEnd.getTime(), dayEnd.getTime()),
+    Math.min(end.getTime(), visibleEnd.getTime()),
   );
   if (clippedEnd <= clippedStart) {
     return undefined;

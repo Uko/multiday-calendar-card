@@ -95,13 +95,11 @@ test('validateEditorConfig accepts an optional start_day_entity and rejects an e
   ]);
 });
 
-test('validateEditorConfig requires look_around to be boolean when supplied', () => {
+test('validateEditorConfig leaves unsupported look_around values to runtime static-mode normalization', () => {
   const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
 
-  assert.deepEqual(validateEditorConfig({ ...base, look_around: true }), []);
-  assert.deepEqual(validateEditorConfig({ ...base, look_around: 'yes' }), [
-    'Look around must be true or false.',
-  ]);
+  assert.deepEqual(validateEditorConfig({ ...base, look_around: 'horizontal' }), []);
+  assert.deepEqual(validateEditorConfig({ ...base, look_around: 'unexpected' }), []);
 });
 
 test('validateEditorConfig accepts arbitrary minute bounds and rejects malformed or reversed times', () => {

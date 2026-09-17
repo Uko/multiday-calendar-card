@@ -1,6 +1,7 @@
 import { validateTapAction, type EventAction } from './event-interaction';
 import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
 import { DAY_NAMES, type DayName } from './calendar-model';
+import { type LookAroundMode } from './look-around-model';
 
 export type CalendarEditorConfig = {
   entity: string;
@@ -20,7 +21,7 @@ export type EditorConfig = {
   slot_minutes?: number;
   height?: number | null;
   hour_height?: number;
-  look_around?: boolean;
+  look_around?: LookAroundMode;
   show_now_line?: boolean;
   skip_days?: DayName[];
   max_simultaneous_events?: number;
@@ -96,9 +97,6 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   }
   if (config.height !== undefined && config.height !== null && (!Number.isFinite(config.height) || config.height <= 0)) {
     errors.push('Fixed height must be a positive number of pixels.');
-  }
-  if (config.look_around !== undefined && typeof config.look_around !== 'boolean') {
-    errors.push('Look around must be true or false.');
   }
   if ((config.height === undefined || config.height === null) && config.hour_height !== undefined &&
       (!Number.isFinite(config.hour_height) || config.hour_height <= 0)) {

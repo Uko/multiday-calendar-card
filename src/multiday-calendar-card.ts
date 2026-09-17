@@ -28,6 +28,12 @@ import {
   LOOK_AROUND_BUFFER_DAYS,
   LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX,
   LOOK_AROUND_RESET_DELAY_MS,
+  LOOK_AROUND_VERTICAL_BUFFER_MINUTES,
+  hasHorizontalLookAround,
+  hasVerticalLookAround,
+  lookAroundVerticalRange,
+  normalizeLookAroundMode,
+  type LookAroundMode,
 } from './look-around-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
 import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
@@ -73,8 +79,8 @@ type MultiDayCalendarCardConfig = {
   height?: number | null;
   /** Timeline height in pixels per visible hour when height is omitted. Defaults to 56. */
   hour_height?: number;
-  /** Enable a temporary horizontal drag viewport around the configured start day. */
-  look_around?: boolean;
+  /** Optional scroll axes around the configured date/time origin. */
+  look_around?: LookAroundMode;
   show_now_line?: boolean;
   /** Two-letter weekday names to omit from the display, for example ['sa', 'su']. */
   skip_days?: DayName[];
@@ -115,7 +121,7 @@ const DEFAULT_CONFIG: Omit<NormalizedCardConfig, 'type' | 'title'> = {
   refresh_interval: 30,
   height: null,
   hour_height: 56,
-  look_around: false,
+  look_around: 'none',
   show_now_line: true,
   skip_days: [],
   max_simultaneous_events: 3,
@@ -291,7 +297,7 @@ class MultiDayCalendarCard extends HTMLElement {
       max_simultaneous_events: maxSimultaneousEvents,
       height,
       hour_height: hourHeight,
-      look_around: config.look_around === true,
+      look_around: normalizeLookAroundMode(config.look_around),
       calendars,
       tap_action: normalizeTapAction(config.tap_action),
       show_location_map: config.show_location_map === true,
@@ -589,17 +595,20 @@ class MultiDayCalendarCard extends HTMLElement {
     this._lookAroundAnimating = false;
   }
 
-  private animateLookAroundScroll(viewport: HTMLElement, left: number, onComplete?: () => void): void {
+  private animateLookAroundScroll(viewport: HTMLElement, left: number, top: number, onComplete?: () => void): void {
     if (this._lookAroundAnimationFrameId !== undefined) cancelAnimationFrame(this._lookAroundAnimationFrameId);
     const startLeft = viewport.scrollLeft;
-    const distance = left - startLeft;
+    const startTop = viewport.scrollTop;
+    const distanceLeft = left - startLeft;
+    const distanceTop = top - startTop;
     const startedAt = performance.now();
     const durationMs = 850;
     this._lookAroundAnimating = true;
     const animate = (now: number): void => {
       const progress = Math.min(1, (now - startedAt) / durationMs);
       const eased = progress < 0.5 ? 2 * progress * progress : 1 - ((-2 * progress + 2) ** 2) / 2;
-      viewport.scrollLeft = startLeft + distance * eased;
+      viewport.scrollLeft = startLeft + distanceLeft * eased;
+      viewport.scrollTop = startTop + distanceTop * eased;
       if (progress < 1) {
         this._lookAroundAnimationFrameId = requestAnimationFrame(animate);
       } else {
@@ -612,13 +621,17 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   private resetLookAround(): void {
-    const viewport = this.querySelector<HTMLElement>('.calendar-viewport.look-around');
+    const viewport = this.querySelector<HTMLElement>('.calendar-viewport');
     if (!viewport) return;
     const anchor = viewport.querySelector<HTMLElement>('[data-look-around-anchor]');
+    const verticalAnchor = viewport.querySelector<HTMLElement>('[data-look-around-vertical-anchor]');
     const left = anchor === null
       ? viewport.scrollLeft
       : viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
-    this.animateLookAroundScroll(viewport, left, () => {
+    const top = verticalAnchor === null
+      ? viewport.scrollTop
+      : viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    this.animateLookAroundScroll(viewport, left, top, () => {
       viewport.dispatchEvent(new Event('look-around-reset'));
     });
   }
@@ -632,11 +645,14 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   private bindLookAround(): void {
-    if (this._config?.look_around !== true) return;
-    const viewport = this.querySelector<HTMLElement>('.calendar-viewport.look-around');
+    if (!this._config || this._config.look_around === 'none') return;
+    const viewport = this.querySelector<HTMLElement>('.calendar-viewport');
     if (!viewport) return;
 
+    const horizontal = hasHorizontalLookAround(this._config.look_around);
+    const vertical = hasVerticalLookAround(this._config.look_around);
     const anchorColumn = (): HTMLElement | null => viewport.querySelector('[data-look-around-anchor]');
+    const anchorVertical = (): HTMLElement | null => viewport.querySelector('[data-look-around-vertical-anchor]');
     const recenterButton = this.querySelector<HTMLButtonElement>('.look-around-recenter');
     const setRecenterButtonVisibility = (visible: boolean): void => {
       if (!recenterButton) return;
@@ -646,14 +662,23 @@ class MultiDayCalendarCard extends HTMLElement {
     const showRecenterButton = (): void => { setRecenterButtonVisibility(true); };
     const hideRecenterButton = (): void => { setRecenterButtonVisibility(false); };
     let startLeft = 0;
+    let startTop = 0;
     let initialized = false;
     let originLocked = true;
     let accumulatedOriginScroll = 0;
     const positionAtStartDay = (): boolean => {
-      const anchor = anchorColumn();
-      if (!anchor || viewport.scrollWidth <= viewport.clientWidth) return false;
-      startLeft = viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
-      viewport.scrollLeft = startLeft;
+      const horizontalAnchor = anchorColumn();
+      const verticalAnchor = anchorVertical();
+      if ((horizontal && (!horizontalAnchor || viewport.scrollWidth <= viewport.clientWidth)) ||
+          (vertical && (!verticalAnchor || viewport.scrollHeight <= viewport.clientHeight))) return false;
+      if (horizontal && horizontalAnchor) {
+        startLeft = viewport.scrollLeft + horizontalAnchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
+        viewport.scrollLeft = startLeft;
+      }
+      if (vertical && verticalAnchor) {
+        startTop = viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+        viewport.scrollTop = startTop;
+      }
       hideRecenterButton();
       originLocked = true;
       accumulatedOriginScroll = 0;
@@ -718,9 +743,12 @@ class MultiDayCalendarCard extends HTMLElement {
     }, { passive: false });
     viewport.addEventListener('touchend', () => { lastTouchX = undefined; }, { passive: true });
     viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
+    const timeLabels = this.querySelector<HTMLElement>('.look-around-vertical-axis .time-labels');
     viewport.addEventListener('scroll', () => {
+      if (vertical && timeLabels) timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
       if (!initialized || this._lookAroundAnimating) return;
-      if (Math.abs(viewport.scrollLeft - startLeft) < 0.5) hideRecenterButton();
+      if ((!horizontal || Math.abs(viewport.scrollLeft - startLeft) < 0.5) &&
+          (!vertical || Math.abs(viewport.scrollTop - startTop) < 0.5)) hideRecenterButton();
       else showRecenterButton();
       if (this._lookAroundScrollEndTimerId !== undefined) clearTimeout(this._lookAroundScrollEndTimerId);
       this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
@@ -739,12 +767,20 @@ class MultiDayCalendarCard extends HTMLElement {
       config.skip_days,
     );
     const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
-    const startMinutes = parseTime(config.start_time)!;
-    const endMinutes = parseTime(config.end_time)!;
+    const configuredStartMinutes = parseTime(config.start_time)!;
+    const configuredEndMinutes = parseTime(config.end_time)!;
+    const horizontalLookAround = hasHorizontalLookAround(config.look_around);
+    const verticalLookAround = hasVerticalLookAround(config.look_around);
+    const verticalRange = lookAroundVerticalRange(config.look_around, configuredStartMinutes, configuredEndMinutes);
+    const startMinutes = verticalRange.startMinutes;
+    const endMinutes = verticalRange.endMinutes;
     const minutesVisible = endMinutes - startMinutes;
+    const baseMinutesVisible = configuredEndMinutes - configuredStartMinutes;
     const visibleHours = minutesVisible / 60;
     const geometry = timelineGeometry(visibleHours, config.slot_minutes, config.hour_height);
+    const baseGeometry = timelineGeometry(baseMinutesVisible / 60, config.slot_minutes, config.hour_height);
     const timelineHeight = geometry.timelineHeightPx;
+    const baseTimelineHeight = baseGeometry.timelineHeightPx;
     const slotHeight = geometry.slotHeightPx;
     const fixedHeight = config.height !== null;
     const dateFormatter = new Intl.DateTimeFormat(locale, {
@@ -759,7 +795,7 @@ class MultiDayCalendarCard extends HTMLElement {
 
     const days = visibleDays(range.start, config.days, config.skip_days);
     const lookAroundAnchorDay = days[0];
-    const lookAroundDays = config.look_around
+    const lookAroundDays = horizontalLookAround
       ? [
         ...visibleDaysBefore(lookAroundAnchorDay, LOOK_AROUND_BUFFER_DAYS, config.skip_days),
         ...visibleDays(lookAroundAnchorDay, LOOK_AROUND_BUFFER_DAYS * 2 + config.days, config.skip_days),
@@ -880,13 +916,16 @@ class MultiDayCalendarCard extends HTMLElement {
         const nowLine = nowLineTop === undefined
           ? ''
           : `<div class="now-line" style="top: ${nowLineTop}%"></div>`;
-        return `<section class="day-column${hasSkippedDaysAfter ? ' skipped-days-after' : ''}" data-day="${localDateKey(day)}"${config.look_around && index === LOOK_AROUND_BUFFER_DAYS ? ' data-look-around-anchor' : ''}>
+        const verticalAnchor = verticalLookAround && index === 0
+          ? `<div class="look-around-vertical-anchor" data-look-around-vertical-anchor style="top: ${((configuredStartMinutes - startMinutes) / minutesVisible) * 100}%"></div>`
+          : '';
+        return `<section class="day-column${hasSkippedDaysAfter ? ' skipped-days-after' : ''}" data-day="${localDateKey(day)}"${horizontalLookAround && index === LOOK_AROUND_BUFFER_DAYS ? ' data-look-around-anchor' : ''}>
           <header class="day-header${isToday ? ' today' : ''}" style="--day-header-height: ${dayHeaderHeight}px">
             <div class="day-name">${escapeHtml(dateFormatter.format(day))}</div>
             ${allDayEvents ? `<div class="all-day-events">${allDayEvents}</div>` : ''}
           </header>
           <div class="timeline" style="${fixedHeight ? '' : `height: ${timelineHeight}px;`} --slot-height: ${slotHeight}px; --slot-count: ${geometry.slotCount}">
-            ${gridLines}${events}${overflowEvents}${nowLine}
+            ${verticalAnchor}${gridLines}${events}${overflowEvents}${nowLine}
           </div>
         </section>`;
       })
@@ -911,14 +950,14 @@ class MultiDayCalendarCard extends HTMLElement {
           ${titlePlacement.bodyTitle ? `<h1 class="fixed-height-title">${escapeHtml(titlePlacement.bodyTitle)}</h1>` : ''}
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
-            ${config.look_around ? `<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day">${RECENTER_ICON_SVG}</button>` : ''}
-            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}" style="--day-header-height: ${dayHeaderHeight}px;${fixedHeight ? '' : ` height: ${timelineHeight + dayHeaderHeight}px;`}">
+            ${horizontalLookAround || verticalLookAround ? `<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day">${RECENTER_ICON_SVG}</button>` : ''}
+            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}${verticalLookAround ? ' look-around-vertical-axis' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px; --look-around-timeline-height: ${timelineHeight}px;${fixedHeight ? '' : ` height: ${verticalLookAround ? baseTimelineHeight + dayHeaderHeight : timelineHeight + dayHeaderHeight}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>
-            ${config.look_around
-              ? `<div class="calendar-viewport look-around">
-                  <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''} look-around">${dayColumns}</div>
+            ${horizontalLookAround || verticalLookAround
+              ? `<div class="calendar-viewport${horizontalLookAround ? ' look-around' : ''}${verticalLookAround ? ' look-around-vertical' : ''}" style="--look-around-viewport-timeline-height: ${baseTimelineHeight}px">
+                  <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}${horizontalLookAround ? ' look-around' : ''}${verticalLookAround ? ' look-around-vertical' : ''}">${dayColumns}</div>
                 </div>`
               : `<div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>`}
           </div>
@@ -949,6 +988,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-label:last-child { transform: translateY(-100%); }
       .calendar-viewport { min-width: 0; }
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; container-type: inline-size; }
+      .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height)); scrollbar-width: thin; }
+      .time-axis.look-around-vertical-axis { overflow: hidden; }
+      .time-axis.look-around-vertical-axis .time-labels { height: var(--look-around-timeline-height); }
       .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, calc(100cqw / ${config.days})); }
       .day-columns.look-around.skipped-days-before { border-left: none; }
@@ -965,6 +1007,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 16px; }
       .timeline { position: relative; }
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; }
+      .look-around-vertical-anchor { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; }
       .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
       .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 1.2; z-index: 1; }
       .event-overflow { border-left-style: dashed; font-style: italic; }
@@ -979,7 +1022,7 @@ class MultiDayCalendarCard extends HTMLElement {
     style.setAttribute('data-multiday-calendar-card', '');
     this.appendChild(style);
     this.bindEventActions();
-    if (config.look_around) this.bindLookAround();
+    if (horizontalLookAround || verticalLookAround) this.bindLookAround();
   }
 }
 
