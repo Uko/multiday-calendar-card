@@ -954,6 +954,7 @@ class MultiDayCalendarCard extends HTMLElement {
             <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}${verticalLookAround ? ' look-around-vertical-axis' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px; --look-around-timeline-height: ${timelineHeight}px;${fixedHeight ? '' : ` height: ${verticalLookAround ? baseTimelineHeight + dayHeaderHeight + 10 : timelineHeight + dayHeaderHeight + 10}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
+              <div class="time-axis-bottom-fade" aria-hidden="true"></div>
             </div>
             ${horizontalLookAround || verticalLookAround
               ? `<div class="calendar-viewport${horizontalLookAround ? ' look-around' : ''}${verticalLookAround ? ' look-around-vertical' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px">
@@ -984,6 +985,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-axis.fixed-height { height: 100%; }
       .time-axis-spacer { height: var(--day-header-height); border-bottom: ${CALENDAR_VISUAL_LAYOUT.timeAxisHeaderDivider ? '1px solid var(--divider-color)' : 'none'}; }
       .time-labels { position: relative; height: calc(100% - var(--day-header-height) - 10px); }
+      .time-axis-bottom-fade { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-50%); }
       .time-axis.look-around-vertical-axis::after { content: ''; position: absolute; inset: 0 0 auto; z-index: 2; height: var(--day-header-height); pointer-events: none; background: linear-gradient(to bottom, var(--card-background-color) 0, var(--card-background-color) calc(100% - 10px), transparent 100%); }
