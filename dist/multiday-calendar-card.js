@@ -1467,7 +1467,8 @@ class MultiDayCalendarCard extends HTMLElement {
         let startTop = 0;
         let initialized = false;
         let originLocked = true;
-        let accumulatedOriginScroll = 0;
+        let accumulatedOriginScrollLeft = 0;
+        let accumulatedOriginScrollTop = 0;
         const positionAtStartDay = () => {
             const horizontalAnchor = anchorColumn();
             const verticalAnchor = anchorVertical();
@@ -1484,7 +1485,8 @@ class MultiDayCalendarCard extends HTMLElement {
             }
             hideRecenterButton();
             originLocked = true;
-            accumulatedOriginScroll = 0;
+            accumulatedOriginScrollLeft = 0;
+            accumulatedOriginScrollTop = 0;
             initialized = true;
             this._lookAroundResizeObserver?.disconnect();
             this._lookAroundResizeObserver = undefined;
@@ -1499,24 +1501,32 @@ class MultiDayCalendarCard extends HTMLElement {
                 return;
             this.scheduleLookAroundReset();
         };
-        const releaseOriginLock = (delta) => {
-            accumulatedOriginScroll += delta;
-            if (Math.abs(accumulatedOriginScroll) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX)
+        const releaseOriginLock = (deltaLeft, deltaTop) => {
+            accumulatedOriginScrollLeft += deltaLeft;
+            accumulatedOriginScrollTop += deltaTop;
+            if (Math.abs(accumulatedOriginScrollLeft) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX &&
+                Math.abs(accumulatedOriginScrollTop) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX)
                 return;
             originLocked = false;
-            viewport.scrollLeft = startLeft + accumulatedOriginScroll;
-            accumulatedOriginScroll = 0;
+            if (horizontal)
+                viewport.scrollLeft = startLeft + accumulatedOriginScrollLeft;
+            if (vertical)
+                viewport.scrollTop = startTop + accumulatedOriginScrollTop;
+            accumulatedOriginScrollLeft = 0;
+            accumulatedOriginScrollTop = 0;
         };
         const cancelAnimation = () => {
             if (this._lookAroundAnimating)
                 this.cancelLookAroundReset();
         };
         let lastTouchX;
+        let lastTouchY;
         viewport.addEventListener('look-around-reset', () => {
             hideRecenterButton();
             this.querySelector('.time-axis-bottom-fade')?.classList.remove('is-active');
             originLocked = true;
-            accumulatedOriginScroll = 0;
+            accumulatedOriginScrollLeft = 0;
+            accumulatedOriginScrollTop = 0;
         });
         recenterButton?.addEventListener('click', (event) => {
             event.preventDefault();
@@ -1528,32 +1538,40 @@ class MultiDayCalendarCard extends HTMLElement {
             cancelAnimation();
             if (!originLocked)
                 return;
-            const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
-            if (delta === 0)
+            const deltaLeft = horizontal ? event.deltaX || (event.shiftKey ? event.deltaY : 0) : 0;
+            const deltaTop = vertical && !event.shiftKey ? event.deltaY : 0;
+            if (deltaLeft === 0 && deltaTop === 0)
                 return;
             event.preventDefault();
             event.stopPropagation();
-            releaseOriginLock(delta);
+            releaseOriginLock(deltaLeft, deltaTop);
         }, { passive: false });
         viewport.addEventListener('touchstart', (event) => {
             cancelAnimation();
             lastTouchX = event.touches[0]?.clientX;
+            lastTouchY = event.touches[0]?.clientY;
         }, { passive: true });
         viewport.addEventListener('touchmove', (event) => {
             if (!originLocked)
                 return;
             const touchX = event.touches[0]?.clientX;
-            if (touchX === undefined || lastTouchX === undefined)
+            const touchY = event.touches[0]?.clientY;
+            if (touchX === undefined || touchY === undefined || lastTouchX === undefined || lastTouchY === undefined)
                 return;
-            const delta = lastTouchX - touchX;
+            const deltaLeft = horizontal ? lastTouchX - touchX : 0;
+            const deltaTop = vertical ? lastTouchY - touchY : 0;
             lastTouchX = touchX;
-            if (delta === 0)
+            lastTouchY = touchY;
+            if (deltaLeft === 0 && deltaTop === 0)
                 return;
             event.preventDefault();
             event.stopPropagation();
-            releaseOriginLock(delta);
+            releaseOriginLock(deltaLeft, deltaTop);
         }, { passive: false });
-        viewport.addEventListener('touchend', () => { lastTouchX = undefined; }, { passive: true });
+        viewport.addEventListener('touchend', () => {
+            lastTouchX = undefined;
+            lastTouchY = undefined;
+        }, { passive: true });
         viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
         const timeLabels = this.querySelector('.look-around-vertical-axis .time-labels');
         const timeAxisBottomFade = this.querySelector('.time-axis-bottom-fade');
