@@ -995,6 +995,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, calc(100cqw / ${config.days})); }
       .day-columns.look-around.skipped-days-before { border-left: none; }
       .day-columns.look-around [data-look-around-anchor] { box-shadow: inset 1px 0 var(--divider-color); }
+      .day-columns.look-around-vertical:not(.look-around) { grid-template-columns: repeat(${config.days}, minmax(0, 1fr)); }
+      .day-columns.look-around-vertical .day-header { position: sticky; top: 0; z-index: 3; background: var(--card-background-color); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
       .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
