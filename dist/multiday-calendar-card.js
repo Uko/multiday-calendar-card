@@ -1431,7 +1431,7 @@ class MultiDayCalendarCard extends HTMLElement {
             : viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left;
         const top = verticalAnchor === null
             ? viewport.scrollTop
-            : Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector('.day-header')?.getBoundingClientRect().height ?? 0));
+            : Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector('.day-header')?.getBoundingClientRect().height ?? 0) + 1);
         this.animateLookAroundScroll(viewport, left, top, () => {
             viewport.dispatchEvent(new Event('look-around-reset'));
         });
@@ -1479,7 +1479,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 viewport.scrollLeft = startLeft;
             }
             if (vertical && verticalAnchor) {
-                startTop = Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector('.day-header')?.getBoundingClientRect().height ?? 0));
+                startTop = Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector('.day-header')?.getBoundingClientRect().height ?? 0) + 1);
                 viewport.scrollTop = startTop;
             }
             hideRecenterButton();
