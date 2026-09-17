@@ -951,7 +951,7 @@ class MultiDayCalendarCard extends HTMLElement {
           ${status}
           <div class="schedule ${fixedHeight ? 'fixed-height' : ''}" role="grid" aria-label="${escapeHtml(accessibleTitle)}">
             ${horizontalLookAround || verticalLookAround ? `<button class="look-around-recenter is-hidden" type="button" aria-hidden="true" title="Return to start day" aria-label="Return to start day">${RECENTER_ICON_SVG}</button>` : ''}
-            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}${verticalLookAround ? ' look-around-vertical-axis' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px; --look-around-timeline-height: ${timelineHeight}px;${fixedHeight ? '' : ` height: ${verticalLookAround ? baseTimelineHeight + dayHeaderHeight : timelineHeight + dayHeaderHeight}px;`}">
+            <div class="time-axis ${fixedHeight ? 'fixed-height' : ''}${verticalLookAround ? ' look-around-vertical-axis' : ''}" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px; --look-around-timeline-height: ${timelineHeight}px;${fixedHeight ? '' : ` height: ${verticalLookAround ? baseTimelineHeight + dayHeaderHeight + 10 : timelineHeight + dayHeaderHeight + 10}px;`}">
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>
@@ -983,13 +983,13 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-axis { position: relative; color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; }
       .time-axis.fixed-height { height: 100%; }
       .time-axis-spacer { height: var(--day-header-height); border-bottom: ${CALENDAR_VISUAL_LAYOUT.timeAxisHeaderDivider ? '1px solid var(--divider-color)' : 'none'}; }
-      .time-labels { position: relative; height: calc(100% - var(--day-header-height)); }
+      .time-labels { position: relative; height: calc(100% - var(--day-header-height) - 10px); }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-50%); }
       .time-axis.look-around-vertical-axis::after { content: ''; position: absolute; inset: 0 0 auto; z-index: 2; height: var(--day-header-height); pointer-events: none; background: linear-gradient(to bottom, var(--card-background-color) 0, var(--card-background-color) calc(100% - 10px), transparent 100%); }
       .calendar-viewport { min-width: 0; }
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; container-type: inline-size; }
-      .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height)); scrollbar-width: thin; }
+      .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height) + 10px); scrollbar-width: thin; }
       .time-axis.look-around-vertical-axis { overflow: hidden; }
       .time-axis.look-around-vertical-axis .time-labels { height: var(--look-around-timeline-height); }
       .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
@@ -1008,7 +1008,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-header.today .day-name { color: var(--primary-color); }
       .all-day-events { display: grid; grid-auto-rows: 18px; gap: 4px; padding: 0 4px 4px; min-height: 0; }
       .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 16px; }
-      .timeline { position: relative; }
+      .timeline { position: relative; margin-bottom: 10px; }
+      .timeline::after { content: ''; position: absolute; z-index: 3; left: 0; right: 0; bottom: -10px; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; }
       .look-around-vertical-anchor { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; }
       .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
