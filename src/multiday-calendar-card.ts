@@ -416,8 +416,13 @@ class MultiDayCalendarCard extends HTMLElement {
   private updateNowLine(): void {
     if (!this._config) return;
     const now = new Date();
-    const startMinutes = parseTime(this._config.start_time)!;
-    const endMinutes = parseTime(this._config.end_time)!;
+    const configuredStartMinutes = parseTime(this._config.start_time)!;
+    const configuredEndMinutes = parseTime(this._config.end_time)!;
+    const { startMinutes, endMinutes } = lookAroundVerticalRange(
+      this._config.look_around,
+      configuredStartMinutes,
+      configuredEndMinutes,
+    );
     const todayKey = localDateKey(now);
 
     this.querySelectorAll<HTMLElement>('.day-column').forEach((column) => {
