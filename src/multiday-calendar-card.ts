@@ -830,7 +830,7 @@ class MultiDayCalendarCard extends HTMLElement {
       { length: Math.floor((endMinutes - Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes) / config.slot_minutes) + 1 },
       (_, index) => Math.ceil(startMinutes / config.slot_minutes) * config.slot_minutes + index * config.slot_minutes,
     )
-      .filter((minutes) => minutes > startMinutes && minutes <= endMinutes && (!verticalLookAround || minutes !== configuredStartMinutes))
+      .filter((minutes) => minutes >= startMinutes && minutes <= endMinutes)
       .map((minutes) => `<div class="grid-line" style="top: ${((minutes - startMinutes) / minutesVisible) * 100}%"></div>`)
       .join('');
     const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -966,6 +966,7 @@ class MultiDayCalendarCard extends HTMLElement {
                   <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}${horizontalLookAround ? ' look-around' : ''}${verticalLookAround ? ' look-around-vertical' : ''}">${dayColumns}</div>
                 </div>`
               : `<div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>`}
+            <div class="timeline-bottom-fade" aria-hidden="true"></div>
           </div>
         </div>
       </ha-card>
@@ -1016,7 +1017,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .all-day-events { display: grid; grid-auto-rows: 18px; gap: 4px; padding: 0 4px 4px; min-height: 0; }
       .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 16px; }
       .timeline { position: relative; margin-bottom: 7px; }
-      .timeline::after { content: ''; position: absolute; z-index: 3; left: 0; right: 0; bottom: -7px; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
+      .timeline-bottom-fade { position: absolute; z-index: 3; left: var(--time-axis-width); right: 0; bottom: 0; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; }
       .look-around-vertical-anchor { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; }
       .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
