@@ -1638,9 +1638,10 @@ class MultiDayCalendarCard extends HTMLElement {
             : days;
         const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
         const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...lookAroundDays.map((day) => this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
+        const firstWholeHourAfterStart = (Math.floor(startMinutes / 60) + 1) * 60;
         const timeLabelMinutes = [
             startMinutes,
-            ...Array.from({ length: 24 }, (_, hour) => hour * 60).filter((minutes) => minutes > startMinutes && minutes < endMinutes),
+            ...Array.from({ length: Math.max(0, Math.ceil((endMinutes - firstWholeHourAfterStart) / 60)) }, (_, index) => firstWholeHourAfterStart + index * 60).filter((minutes) => minutes < endMinutes),
             endMinutes,
         ];
         const timeLabelValues = timeLabelMinutes.map((minutes) => {
