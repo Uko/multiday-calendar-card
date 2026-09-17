@@ -1761,7 +1761,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .fixed-height-title { flex: 0 0 auto; margin: 8px 0 16px; font-size: 24px; font-weight: 400; line-height: 1.2; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
-      .schedule { --time-axis-width: ${measuredTimeAxisWidth}px; position: relative; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); min-width: 460px; }
+      .schedule { --time-axis-width: ${measuredTimeAxisWidth}px; position: relative; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); min-width: 0; }
       .look-around-recenter { position: absolute; z-index: 4; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear; }
       .look-around-recenter.is-hidden { visibility: hidden; pointer-events: none; opacity: 0; transform: scale(0.9); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear 280ms; }
       .look-around-recenter:hover { background: color-mix(in srgb, var(--primary-color) 85%, black); }
@@ -1772,8 +1772,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-axis.fixed-height { height: 100%; }
       .time-axis-spacer { height: var(--day-header-height); border-bottom: ${'none'}; }
       .time-labels { position: relative; height: calc(100% - var(--day-header-height) - 7px); }
-      .time-axis-bottom-fade { position: absolute; z-index: 2; left: 0; width: var(--time-axis-width); bottom: -13px; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
-      .time-axis-bottom-fade.is-active { bottom: 0; }
+      .time-axis-bottom-fade { position: absolute; z-index: 2; display: none; left: 0; width: var(--time-axis-width); bottom: 0; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
+      .time-axis-bottom-fade.is-active { display: block; }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-50%); }
       .time-axis.look-around-vertical-axis::after { content: ''; position: absolute; z-index: 2; top: -3px; left: 0; right: 0; height: var(--day-header-height); pointer-events: none; background: linear-gradient(to bottom, var(--card-background-color) 0, var(--card-background-color) calc(100% - 10px), transparent 100%); }
@@ -1782,7 +1782,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height) + 7px); scrollbar-width: thin; }
       .time-axis.look-around-vertical-axis { overflow: hidden; }
       .time-axis.look-around-vertical-axis .time-labels { height: var(--look-around-timeline-height); }
-      .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(140px, 1fr)); border-left: 1px solid var(--divider-color); }
+      .day-columns { min-width: 0; display: grid; grid-template-columns: repeat(${config.days}, minmax(0, 1fr)); border-left: 1px solid var(--divider-color); }
       .day-columns.look-around { border-left: none; grid-template-columns: repeat(${lookAroundDays.length}, calc(100cqw / ${config.days})); }
       .day-columns.look-around.skipped-days-before { border-left: none; }
       .day-columns.look-around [data-look-around-anchor] { box-shadow: inset 1px 0 var(--divider-color); }
