@@ -713,6 +713,7 @@ class MultiDayCalendarCard extends HTMLElement {
     let lastTouchX: number | undefined;
     viewport.addEventListener('look-around-reset', () => {
       hideRecenterButton();
+      this.querySelector<HTMLElement>('.time-axis-bottom-fade')?.classList.remove('is-active');
       originLocked = true;
       accumulatedOriginScroll = 0;
     });
@@ -749,8 +750,13 @@ class MultiDayCalendarCard extends HTMLElement {
     viewport.addEventListener('touchend', () => { lastTouchX = undefined; }, { passive: true });
     viewport.addEventListener('pointerdown', cancelAnimation, { passive: true });
     const timeLabels = this.querySelector<HTMLElement>('.look-around-vertical-axis .time-labels');
+    const timeAxisBottomFade = this.querySelector<HTMLElement>('.time-axis-bottom-fade');
+    const setTimeAxisBottomFadeActive = (active: boolean): void => {
+      if (vertical) timeAxisBottomFade?.classList.toggle('is-active', active);
+    };
     viewport.addEventListener('scroll', () => {
       if (vertical && timeLabels) timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
+      setTimeAxisBottomFadeActive(Math.abs(viewport.scrollTop - startTop) >= 0.5);
       if (!initialized || this._lookAroundAnimating) return;
       if ((!horizontal || Math.abs(viewport.scrollLeft - startLeft) < 0.5) &&
           (!vertical || Math.abs(viewport.scrollTop - startTop) < 0.5)) hideRecenterButton();
@@ -966,7 +972,6 @@ class MultiDayCalendarCard extends HTMLElement {
                   <div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}${horizontalLookAround ? ' look-around' : ''}${verticalLookAround ? ' look-around-vertical' : ''}">${dayColumns}</div>
                 </div>`
               : `<div class="day-columns${hasLeadingSkippedDays ? ' skipped-days-before' : ''} ${fixedHeight ? 'fixed-height' : ''}">${dayColumns}</div>`}
-            <div class="timeline-bottom-fade" aria-hidden="true"></div>
           </div>
         </div>
       </ha-card>
@@ -992,6 +997,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-axis-spacer { height: var(--day-header-height); border-bottom: ${CALENDAR_VISUAL_LAYOUT.timeAxisHeaderDivider ? '1px solid var(--divider-color)' : 'none'}; }
       .time-labels { position: relative; height: calc(100% - var(--day-header-height) - 7px); }
       .time-axis-bottom-fade { position: absolute; z-index: 2; left: 0; width: var(--time-axis-width); bottom: -13px; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
+      .time-axis-bottom-fade.is-active { bottom: 0; }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-50%); }
       .time-axis.look-around-vertical-axis::after { content: ''; position: absolute; z-index: 2; top: -3px; left: 0; right: 0; height: var(--day-header-height); pointer-events: none; background: linear-gradient(to bottom, var(--card-background-color) 0, var(--card-background-color) calc(100% - 10px), transparent 100%); }
@@ -1016,8 +1022,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-header.today .day-name { color: var(--primary-color); }
       .all-day-events { display: grid; grid-auto-rows: 18px; gap: 4px; padding: 0 4px 4px; min-height: 0; }
       .all-day-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 1px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 16px; }
-      .timeline { position: relative; margin-bottom: 7px; }
-      .timeline-bottom-fade { position: absolute; z-index: 3; left: var(--time-axis-width); right: 0; bottom: 0; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
+      .timeline { position: relative; margin-bottom: 7px; transform: translateY(-1px); }
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; }
       .look-around-vertical-anchor { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; }
       .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
