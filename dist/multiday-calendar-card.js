@@ -1699,11 +1699,12 @@ class MultiDayCalendarCard extends HTMLElement {
       .fixed-height-title { flex: 0 0 auto; margin: 8px 0 16px; font-size: 24px; font-weight: 400; line-height: 1.2; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
-      .schedule { position: relative; display: grid; grid-template-columns: ${measuredTimeAxisWidth}px minmax(0, 1fr); min-width: 460px; }
-      .look-around-recenter { position: absolute; z-index: 4; top: 4px; left: 4px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--divider-color); border-radius: 50%; background: var(--card-background-color); color: var(--primary-text-color); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; }
-      .look-around-recenter:hover { background: var(--secondary-background-color); }
+      .schedule { --time-axis-width: ${measuredTimeAxisWidth}px; position: relative; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); min-width: 460px; }
+      .look-around-recenter { position: absolute; z-index: 4; top: 4px; left: calc((var(--time-axis-width) - 28px) / 2); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; }
+      .look-around-recenter[hidden] { display: none; }
+      .look-around-recenter:hover { background: color-mix(in srgb, var(--primary-color) 85%, black); }
       .look-around-recenter:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-      .look-around-recenter ha-icon { width: 20px; height: 20px; }
+      .look-around-recenter ha-icon { display: block; flex: 0 0 auto; width: 18px; height: 18px; }
       .schedule.fixed-height { flex: 1; min-height: 0; }
       .time-axis { position: relative; color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; }
       .time-axis.fixed-height { height: 100%; }
