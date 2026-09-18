@@ -1371,8 +1371,78 @@ class MultiDayCalendarCard extends HTMLElement {
             requestedKeys.forEach((key) => this._loadingDays.delete(key));
             this._loading = this._loadingDays.size > 0;
             if (generation === this._eventCacheGeneration)
-                this.render();
+                this.updateLoadedDayColumns(requestedKeys);
         }
+    }
+    /** Patch only the day columns whose cache entries changed; never recreate the viewport. */
+    updateLoadedDayColumns(dayKeys) {
+        if (!this._config)
+            return;
+        const config = this._config;
+        const configuredStartMinutes = parseTime(config.start_time);
+        const configuredEndMinutes = parseTime(config.end_time);
+        const { startMinutes, endMinutes } = lookAroundVerticalRange(config.look_around, configuredStartMinutes, configuredEndMinutes);
+        const minutesVisible = endMinutes - startMinutes;
+        for (const key of dayKeys) {
+            const column = this.querySelector(`.day-column[data-day="${key}"]`);
+            if (!column)
+                continue;
+            const [year, month, date] = key.split('-').map(Number);
+            const day = new Date(year, month, date);
+            const timeline = column.querySelector('.timeline');
+            const header = column.querySelector('.day-header');
+            if (!timeline || !header)
+                continue;
+            header.querySelector('.all-day-events')?.remove();
+            timeline.querySelectorAll(':scope > .event').forEach((event) => event.remove());
+            const dayEvents = this.eventsForDay(day);
+            const interactive = config.tap_action.action === 'more-info';
+            const allDayEvents = dayEvents
+                .map(({ calendar, event }) => ({
+                calendar,
+                eventIndex: this._renderedEvents.push({ calendar, event }) - 1,
+                placement: allDayEventPlacementForDay(event, day),
+            }))
+                .filter((item) => item.placement !== undefined)
+                .map(({ calendar, eventIndex, placement }) => {
+                const calendarName = calendar.label ?? calendar.entity;
+                return `<div class="all-day-event${interactive ? ' interactive-event' : ''}"${interactive ? ` data-event-index="${eventIndex}" role="button" tabindex="0"` : ''} style="--event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">${escapeHtml(placement.summary)}</div>`;
+            })
+                .join('');
+            if (allDayEvents)
+                header.insertAdjacentHTML('beforeend', `<div class="all-day-events">${allDayEvents}</div>`);
+            const placements = dayEvents
+                .map(({ calendar, event }) => ({
+                calendar,
+                eventIndex: this._renderedEvents.push({ calendar, event }) - 1,
+                placement: eventPlacementForDay(event, day, startMinutes, endMinutes),
+            }))
+                .filter((item) => item.placement !== undefined);
+            const laneLayout = layoutTimedEventLanes(placements.map(({ calendar, eventIndex, placement }) => ({
+                event: { calendar, eventIndex, placement },
+                startMinutes: placement.startMinutes,
+                durationMinutes: placement.durationMinutes,
+            })), config.max_simultaneous_events);
+            const eventStyle = (eventStartMinutes, durationMinutes, lane, laneCount) => {
+                const top = ((eventStartMinutes - startMinutes) / minutesVisible) * 100;
+                const height = (durationMinutes / minutesVisible) * 100;
+                const laneWidth = 100 / laneCount;
+                return `top: ${top}%; height: ${height}%; left: calc(${lane * laneWidth}% + 4px); width: calc(${laneWidth}% - 8px)`;
+            };
+            const events = laneLayout.events.map(({ event: { calendar, eventIndex, placement }, lane, laneCount }) => {
+                const calendarName = calendar.label ?? calendar.entity;
+                return `<div class="event${interactive ? ' interactive-event' : ''}"${interactive ? ` data-event-index="${eventIndex}" role="button" tabindex="0"` : ''} style="${eventStyle(placement.startMinutes, placement.durationMinutes, lane, laneCount)}; --event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}"><div class="event-labels"><div class="event-summary">${escapeHtml(placement.summary)}</div><div class="event-calendar">${escapeHtml(calendarName)}</div></div></div>`;
+            }).join('');
+            const overflows = laneLayout.overflows.map(({ startMinutes: overflowStart, durationMinutes, lane, laneCount, hiddenEvents }) => {
+                const names = hiddenEvents.map(({ calendar }) => calendar.label ?? calendar.entity);
+                const color = averageEventColors(hiddenEvents.map(({ calendar }) => calendar.color ?? '')) ?? 'var(--primary-color)';
+                const count = hiddenEvents.length;
+                return `<div class="event event-overflow" style="${eventStyle(overflowStart, durationMinutes, lane, laneCount)}; --event-color: ${color}" title="${escapeHtml(`${count} undisplayed event${count === 1 ? '' : 's'} — ${names.join(', ')}`)}"><div class="event-summary">+${count} more</div></div>`;
+            }).join('');
+            timeline.insertAdjacentHTML('beforeend', `${events}${overflows}`);
+            this.bindEventActions(column);
+        }
+        this.updateNowLine();
     }
     showEventDetails(eventIndex) {
         const loadedEvent = this._renderedEvents[eventIndex];
@@ -1399,10 +1469,10 @@ class MultiDayCalendarCard extends HTMLElement {
             },
         }));
     }
-    bindEventActions() {
+    bindEventActions(root = this) {
         if (this._config?.tap_action.action !== 'more-info')
             return;
-        this.querySelectorAll('[data-event-index]').forEach((element) => {
+        root.querySelectorAll('[data-event-index]').forEach((element) => {
             const showDetails = () => this.showEventDetails(Number(element.dataset.eventIndex));
             element.addEventListener('click', showDetails);
             element.addEventListener('keydown', (event) => {
