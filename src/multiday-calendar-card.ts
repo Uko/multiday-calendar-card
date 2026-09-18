@@ -232,6 +232,8 @@ class MultiDayCalendarCard extends HTMLElement {
   private _lookAroundAnimationFrameId?: number;
   private _lookAroundResizeObserver?: ResizeObserver;
   private _lookAroundAnimating = false;
+  /** True only after the current DOM has been placed at its configured origin once. */
+  private _lookAroundInitialized = false;
 
   setConfig(config: MultiDayCalendarCardConfig): void {
     if (!config?.type) {
@@ -314,6 +316,7 @@ class MultiDayCalendarCard extends HTMLElement {
     this._config = nextConfig;
     this.invalidateEventCache();
     this._activeStartDay = undefined;
+    this._lookAroundInitialized = false;
     this.onNewStartDate(this.resolveStartDay());
     this.cancelRecoveryRefresh();
     this._failedFetchAttempts = 0;
@@ -490,6 +493,7 @@ class MultiDayCalendarCard extends HTMLElement {
     startDay.setHours(0, 0, 0, 0);
     if (this._activeStartDay && sameLocalDay(this._activeStartDay, startDay)) return false;
     this._activeStartDay = startDay;
+    this._lookAroundInitialized = false;
     this.invalidateEventCache();
     return true;
   }
@@ -699,10 +703,11 @@ class MultiDayCalendarCard extends HTMLElement {
       });
   }
 
-  private bindLookAround(): void {
+  private bindLookAround(initialScrollPosition?: { left: number; top: number }): void {
     if (!this._config || this._config.look_around === 'none') return;
     const viewport = this.querySelector<HTMLElement>('.calendar-viewport');
     if (!viewport) return;
+    let scrollPositionToRestore = initialScrollPosition;
 
     const horizontal = hasHorizontalLookAround(this._config.look_around);
     const vertical = hasVerticalLookAround(this._config.look_around);
@@ -726,23 +731,29 @@ class MultiDayCalendarCard extends HTMLElement {
     let accumulatedOriginScrollLeft = 0;
     let accumulatedOriginScrollTop = 0;
     const positionAtStartDay = (): boolean => {
+      if (initialized) return true;
       const horizontalAnchor = anchorColumn();
       const verticalAnchor = anchorVertical();
       if ((horizontal && (!horizontalAnchor || viewport.scrollWidth <= viewport.clientWidth)) ||
           (vertical && (!verticalAnchor || viewport.scrollHeight <= viewport.clientHeight))) return false;
       if (horizontal && horizontalAnchor) {
         startLeft = viewport.scrollLeft + horizontalAnchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left - nativeTimeAxisWidth();
-        viewport.scrollLeft = startLeft;
+        viewport.scrollLeft = scrollPositionToRestore?.left ?? startLeft;
       }
       if (vertical && verticalAnchor) {
         startTop = Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector<HTMLElement>('.day-header')?.getBoundingClientRect().height ?? 0) + 1);
-        viewport.scrollTop = startTop;
+        viewport.scrollTop = scrollPositionToRestore?.top ?? startTop;
       }
-      hideRecenterButton();
-      originLocked = true;
+      const restoredOffOrigin = scrollPositionToRestore !== undefined &&
+        ((horizontal && Math.abs(viewport.scrollLeft - startLeft) >= 0.5) ||
+          (vertical && Math.abs(viewport.scrollTop - startTop) >= 0.5));
+      scrollPositionToRestore = undefined;
+      setRecenterButtonVisibility(restoredOffOrigin);
+      originLocked = !restoredOffOrigin;
       accumulatedOriginScrollLeft = 0;
       accumulatedOriginScrollTop = 0;
       initialized = true;
+      this._lookAroundInitialized = true;
       this._lookAroundResizeObserver?.disconnect();
       this._lookAroundResizeObserver = undefined;
       return true;
@@ -842,8 +853,11 @@ class MultiDayCalendarCard extends HTMLElement {
   private render(): void {
     if (!this._config) return;
 
-    // Loading a newly exposed cached day must not reset the native scroll coordinate.
-    const previousViewport = this.querySelector<HTMLElement>('.calendar-viewport');
+    // Do not preserve the browser's initial zero scroll position. The first render must
+    // establish the configured origin; later data renders preserve only that origin or a user-pan.
+    const previousViewport = this._lookAroundInitialized
+      ? this.querySelector<HTMLElement>('.calendar-viewport')
+      : null;
     const preservedScrollPosition = previousViewport === null
       ? undefined
       : { left: previousViewport.scrollLeft, top: previousViewport.scrollTop };
@@ -1146,17 +1160,7 @@ class MultiDayCalendarCard extends HTMLElement {
     style.setAttribute('data-multiday-calendar-card', '');
     this.appendChild(style);
     this.bindEventActions();
-    if (horizontalLookAround || verticalLookAround) this.bindLookAround();
-    if (preservedScrollPosition) {
-      // bindLookAround establishes its origin on two animation frames; restore after it
-      // so fetching data never moves content beneath the user's finger.
-      requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
-        const viewport = this.querySelector<HTMLElement>('.calendar-viewport');
-        if (!viewport) return;
-        viewport.scrollLeft = preservedScrollPosition.left;
-        viewport.scrollTop = preservedScrollPosition.top;
-      })));
-    }
+    if (horizontalLookAround || verticalLookAround) this.bindLookAround(preservedScrollPosition);
   }
 }
 

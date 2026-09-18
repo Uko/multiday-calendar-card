@@ -39,11 +39,17 @@ test('onNewStartDate updates the active day only when the local calendar day cha
 
   const card = new CalendarCard() as FakeHTMLElement & {
     onNewStartDate(date: Date): boolean;
+    _lookAroundInitialized: boolean;
   };
 
+  card._lookAroundInitialized = true;
   assert.equal(card.onNewStartDate(new Date(2026, 8, 8, 10, 15)), true);
+  assert.equal(card._lookAroundInitialized, false);
+  card._lookAroundInitialized = true;
   assert.equal(card.onNewStartDate(new Date(2026, 8, 8, 23, 59)), false);
+  assert.equal(card._lookAroundInitialized, true);
   assert.equal(card.onNewStartDate(new Date(2026, 8, 9, 0, 0)), true);
+  assert.equal(card._lookAroundInitialized, false);
 });
 
 test('configured start_day_entity reloads only when its calendar date changes', () => {
