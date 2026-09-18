@@ -1605,10 +1605,17 @@ class MultiDayCalendarCard extends HTMLElement {
     }
     viewportDays(viewport) {
         const viewportBounds = viewport.getBoundingClientRect();
+        // In vertical/full look-around the sticky native time axis occupies the left part
+        // of the scrollport. A prior day can geometrically intersect that obscured strip
+        // even though none of its calendar content is visible.
+        const nativeAxisWidth = viewport.classList.contains('native-vertical-time-axis')
+            ? viewport.querySelector('.time-axis.native-vertical-time-axis')?.getBoundingClientRect().width ?? 0
+            : 0;
+        const visibleLeft = viewportBounds.left + nativeAxisWidth;
         return Array.from(viewport.querySelectorAll('.day-column[data-day]'))
             .filter((column) => {
             const bounds = column.getBoundingClientRect();
-            return bounds.right > viewportBounds.left && bounds.left < viewportBounds.right &&
+            return bounds.right > visibleLeft && bounds.left < viewportBounds.right &&
                 bounds.bottom > viewportBounds.top && bounds.top < viewportBounds.bottom;
         })
             .map((column) => {
