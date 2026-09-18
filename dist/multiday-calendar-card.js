@@ -2018,6 +2018,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .calendar-viewport { min-width: 0; }
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; container-type: inline-size; }
       .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height) + 7px); scrollbar-width: thin; }
+      /* In a fixed card the schedule owns the available height. Let the viewport shrink
+         into that space instead of retaining the flowing-card timeline height. */
+      .schedule.fixed-height .calendar-viewport.look-around-vertical { height: 100%; min-height: 0; }
       /* The nested native axis replaces schedule's normal first grid child, so its viewport must span both outer columns. */
       .calendar-viewport.native-vertical-time-axis { grid-column: 1 / -1; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); }
       /* The time strip must mask the date-header edge; its own fades (local) and the schedule overlays (5/6) remain above it. */
