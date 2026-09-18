@@ -1023,7 +1023,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
       .schedule { --time-axis-width: ${measuredTimeAxisWidth}px; position: relative; z-index: 0; isolation: isolate; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); min-width: 0; }
-      .look-around-recenter { position: absolute; z-index: 4; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear; }
+      .look-around-recenter { position: absolute; z-index: 6; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear; }
       .look-around-recenter.is-hidden { visibility: hidden; pointer-events: none; opacity: 0; transform: scale(0.9); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear 280ms; }
       .look-around-recenter:hover { background: color-mix(in srgb, var(--primary-color) 85%, black); }
       .look-around-recenter:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
@@ -1033,7 +1033,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-axis.fixed-height { height: 100%; }
       .time-axis-spacer { height: var(--day-header-height); border-bottom: ${CALENDAR_VISUAL_LAYOUT.timeAxisHeaderDivider ? '1px solid var(--divider-color)' : 'none'}; }
       .time-labels { position: relative; height: calc(100% - var(--day-header-height) - 7px); }
-      .time-axis-bottom-fade { position: absolute; z-index: 2; display: none; left: 0; width: var(--time-axis-width); bottom: 0; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
+      .time-axis-bottom-fade { position: absolute; z-index: 5; display: none; left: 0; width: var(--time-axis-width); bottom: 0; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
       .time-axis-bottom-fade.is-active { display: block; }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-50%); }
@@ -1043,8 +1043,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height) + 7px); scrollbar-width: thin; }
       /* The nested native axis replaces schedule's normal first grid child, so its viewport must span both outer columns. */
       .calendar-viewport.native-vertical-time-axis { grid-column: 1 / -1; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); }
-      /* Keep the opaque axis above day content but below the schedule fade (2) and re-center control (4). The isolated schedule prevents it from escaping over HA chrome. */
-      .calendar-viewport.native-vertical-time-axis > .time-axis { position: sticky; left: 0; z-index: 1; grid-column: 1; align-self: start; background: var(--card-background-color); }
+      /* The time strip must mask the date-header edge; its own fades (local) and the schedule overlays (5/6) remain above it. */
+      .calendar-viewport.native-vertical-time-axis > .time-axis { position: sticky; left: 0; z-index: 4; grid-column: 1; align-self: start; background: var(--card-background-color); }
       .calendar-viewport.native-vertical-time-axis > .day-columns { grid-column: 2; min-width: 0; }
       .time-axis.look-around-vertical-axis { overflow: hidden; }
       .time-axis.look-around-vertical-axis .time-labels { height: var(--look-around-timeline-height); }
