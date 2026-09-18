@@ -1818,7 +1818,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height) + 7px); scrollbar-width: thin; }
       /* The nested native axis replaces schedule's normal first grid child, so its viewport must span both outer columns. */
       .calendar-viewport.native-vertical-time-axis { grid-column: 1 / -1; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); }
-      .calendar-viewport.native-vertical-time-axis > .time-axis { position: sticky; left: 0; z-index: 4; grid-column: 1; align-self: start; background: var(--card-background-color); }
+      /* Keep this sticky only on the horizontal axis. z-index: 0 lets the schedule fade (2), re-center control (4), and HA's own header paint above it. */
+      .calendar-viewport.native-vertical-time-axis > .time-axis { position: sticky; left: 0; z-index: 0; grid-column: 1; align-self: start; background: var(--card-background-color); }
       .calendar-viewport.native-vertical-time-axis > .day-columns { grid-column: 2; min-width: 0; }
       .time-axis.look-around-vertical-axis { overflow: hidden; }
       .time-axis.look-around-vertical-axis .time-labels { height: var(--look-around-timeline-height); }
