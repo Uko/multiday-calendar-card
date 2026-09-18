@@ -605,6 +605,7 @@ class MultiDayCalendarCard extends HTMLElement {
     this.querySelectorAll<HTMLElement>('.day-header, .time-axis, .calendar-viewport')
       .forEach((element) => element.style.setProperty('--day-header-height', height));
     this._dayHeaderHeight = dayHeaderHeight;
+    this.syncFixedVerticalLookAroundGeometry();
     if (!this._dayHeaderAnimationReady) {
       requestAnimationFrame(() => {
         if (this._dayHeaderHeight === dayHeaderHeight) {
@@ -629,6 +630,31 @@ class MultiDayCalendarCard extends HTMLElement {
     // look-around is completing its initial placement. Falling back to all configured
     // days here leaves a stale all-day-event gap after horizontal panning.
     this.updateHeaderForDays(viewport ? this.viewportDays(viewport) : this.normalDisplayDays());
+  }
+
+  /** Keep the configured vertical time range fully visible in a fixed full-look-around card. */
+  private syncFixedVerticalLookAroundGeometry(): void {
+    if (!this._config || this._config.height === null || !hasVerticalLookAround(this._config.look_around)) return;
+    const configuredStart = parseTime(this._config.start_time);
+    const configuredEnd = parseTime(this._config.end_time);
+    if (configuredStart === undefined || configuredEnd === undefined) return;
+    const range = lookAroundVerticalRange(this._config.look_around, configuredStart, configuredEnd);
+    const configuredMinutes = configuredEnd - configuredStart;
+    if (configuredMinutes <= 0) return;
+    const viewport = this.querySelector<HTMLElement>('.calendar-viewport.native-vertical-time-axis');
+    if (!viewport || viewport.clientHeight <= 0) return;
+    const dayHeaderHeight = this._dayHeaderHeight ?? calendarHeaderHeight(0);
+    const viewportTimelineHeight = viewport.clientHeight - dayHeaderHeight - 7;
+    if (viewportTimelineHeight <= 0) return;
+    const timelineHeight = viewportTimelineHeight * ((range.endMinutes - range.startMinutes) / configuredMinutes);
+    const totalHeight = timelineHeight + dayHeaderHeight + 7;
+    const height = `${totalHeight}px`;
+    const contentHeight = `${timelineHeight}px`;
+    viewport.querySelectorAll<HTMLElement>(':scope > .time-axis, :scope > .day-columns')
+      .forEach((element) => {
+        element.style.height = height;
+        element.style.setProperty('--look-around-timeline-height', contentHeight);
+      });
   }
 
   /** Patch only the day columns whose cache entries changed; never recreate the viewport. */
@@ -874,6 +900,7 @@ class MultiDayCalendarCard extends HTMLElement {
     let accumulatedOriginScrollTop = 0;
     const positionAtStartDay = (): boolean => {
       if (initialized) return true;
+      this.syncFixedVerticalLookAroundGeometry();
       const horizontalAnchor = anchorColumn();
       const verticalAnchor = anchorVertical();
       if ((horizontal && (!horizontalAnchor || viewport.scrollWidth <= viewport.clientWidth)) ||
@@ -1283,9 +1310,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-columns.look-around-vertical:not(.look-around) { grid-template-columns: repeat(${config.days}, minmax(0, 1fr)); }
       .day-columns.look-around-vertical .day-header { position: sticky; top: 0; z-index: 3; background: var(--card-background-color); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
-      /* Grid items stretch through a parent's padding area, so reserve the gutter by
-         reducing the fixed grid itself rather than padding that parent. */
-      .day-columns.fixed-height { height: calc(100% - 7px); align-self: start; }
+      /* The timeline's 7px bottom margin forms the fixed-card gutter while keeping
+         its grid height identical to the time-label coordinate system. */
+      .day-columns.fixed-height { height: 100%; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
       .day-column.skipped-days-after { border-right-width: 3px; }
       .day-column.before-look-around-anchor { border-right: 0; }
