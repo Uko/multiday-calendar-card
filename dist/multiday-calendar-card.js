@@ -1712,8 +1712,10 @@ class MultiDayCalendarCard extends HTMLElement {
                 const calendarName = calendar.label ?? calendar.entity;
                 const interactive = config.tap_action.action === 'more-info';
                 return `<div class="event${interactive ? ' interactive-event' : ''}"${interactive ? ` data-event-index="${eventIndex}" role="button" tabindex="0"` : ''} style="${eventStyle(placement.startMinutes, placement.durationMinutes, lane, laneCount)}; --event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">
-              <div class="event-summary">${escapeHtml(placement.summary)}</div>
-              <div class="event-calendar">${escapeHtml(calendarName)}</div>
+              <div class="event-labels">
+                <div class="event-summary">${escapeHtml(placement.summary)}</div>
+                <div class="event-calendar">${escapeHtml(calendarName)}</div>
+              </div>
             </div>`;
             })
                 .join('');
@@ -1847,7 +1849,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-columns.fixed-height .timeline { flex: 1; min-height: 0; }
       .look-around-vertical-anchor { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; }
       .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); z-index: 0; }
-      .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: hidden; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 1.2; z-index: 1; }
+      .event { position: absolute; min-height: 18px; box-sizing: border-box; overflow: clip; border-left: 4px solid var(--event-color); border-radius: 4px; padding: 3px 5px; background: color-mix(in srgb, var(--event-color) 25%, var(--card-background-color)); color: var(--primary-text-color); font-size: ${CALENDAR_VISUAL_LAYOUT.textSizeRem}rem; line-height: 1.2; z-index: 1; }
+      /* Overflow clipping preserves the bubble edge without making it a scroll container, allowing the label group to stick to the vertical viewport. */
+      .day-columns.look-around-vertical .event-labels { position: sticky; top: calc(var(--day-header-height) + 3px); }
       .event-overflow { border-left-style: dashed; font-style: italic; }
       .interactive-event { cursor: pointer; }
       .interactive-event:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
