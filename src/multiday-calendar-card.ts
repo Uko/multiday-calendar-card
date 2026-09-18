@@ -862,7 +862,7 @@ class MultiDayCalendarCard extends HTMLElement {
     return Array.from(viewport.querySelectorAll<HTMLElement>('.day-column[data-day]'))
       .filter((column) => {
         const bounds = column.getBoundingClientRect();
-        return bounds.right > visibleLeft && bounds.left < viewportBounds.right &&
+        return bounds.right > visibleLeft + 1 && bounds.left < viewportBounds.right &&
           bounds.bottom > viewportBounds.top && bounds.top < viewportBounds.bottom;
       })
       .map((column) => {
@@ -914,8 +914,8 @@ class MultiDayCalendarCard extends HTMLElement {
         viewport.scrollTop = scrollPositionToRestore?.top ?? startTop;
       }
       const restoredOffOrigin = scrollPositionToRestore !== undefined &&
-        ((horizontal && Math.abs(viewport.scrollLeft - startLeft) >= 0.5) ||
-          (vertical && Math.abs(viewport.scrollTop - startTop) >= 0.5));
+        ((horizontal && Math.abs(viewport.scrollLeft - startLeft) > 1) ||
+          (vertical && Math.abs(viewport.scrollTop - startTop) > 1));
       scrollPositionToRestore = undefined;
       setRecenterButtonVisibility(restoredOffOrigin);
       originLocked = !restoredOffOrigin;
@@ -1018,10 +1018,10 @@ class MultiDayCalendarCard extends HTMLElement {
       this.updateHeaderForViewport(viewport);
       void this.loadEvents(false, this.viewportDays(viewport));
       if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis')) timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
-      setTimeAxisBottomFadeActive(Math.abs(viewport.scrollTop - startTop) >= 0.5);
+      setTimeAxisBottomFadeActive(Math.abs(viewport.scrollTop - startTop) > 1);
       if (!initialized || this._lookAroundAnimating) return;
-      if ((!horizontal || Math.abs(viewport.scrollLeft - startLeft) < 0.5) &&
-          (!vertical || Math.abs(viewport.scrollTop - startTop) < 0.5)) hideRecenterButton();
+      if ((!horizontal || Math.abs(viewport.scrollLeft - startLeft) <= 1) &&
+          (!vertical || Math.abs(viewport.scrollTop - startTop) <= 1)) hideRecenterButton();
       else showRecenterButton();
       if (this._lookAroundScrollEndTimerId !== undefined) clearTimeout(this._lookAroundScrollEndTimerId);
       this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
