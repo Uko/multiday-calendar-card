@@ -1044,6 +1044,7 @@ class MultiDayCalendarCard extends HTMLElement {
         this._lookAroundAnimating = false;
         /** True only after the current DOM has been placed at its configured origin once. */
         this._lookAroundInitialized = false;
+        this._dayHeaderAnimationReady = false;
         this.handleConnectionReady = () => {
             if (this.isConnected) {
                 this.onNewStartDate(this.resolveStartDay());
@@ -1147,6 +1148,8 @@ class MultiDayCalendarCard extends HTMLElement {
         this.invalidateEventCache();
         this._activeStartDay = undefined;
         this._lookAroundInitialized = false;
+        this._dayHeaderHeight = undefined;
+        this._dayHeaderAnimationReady = false;
         this.onNewStartDate(this.resolveStartDay());
         this.cancelRecoveryRefresh();
         this._failedFetchAttempts = 0;
@@ -1301,6 +1304,8 @@ class MultiDayCalendarCard extends HTMLElement {
             return false;
         this._activeStartDay = startDay;
         this._lookAroundInitialized = false;
+        this._dayHeaderHeight = undefined;
+        this._dayHeaderAnimationReady = false;
         this.invalidateEventCache();
         return true;
     }
@@ -1384,6 +1389,27 @@ class MultiDayCalendarCard extends HTMLElement {
         indicator.classList.toggle('is-loading', this._loading);
         indicator.setAttribute('aria-hidden', String(!this._loading));
     }
+    /** Animate the shared header boundary only after the initial data layout is established. */
+    updateDayHeaderHeight(dayHeaderHeight) {
+        if (this._dayHeaderHeight === dayHeaderHeight)
+            return;
+        const card = this.querySelector('ha-card');
+        card?.classList.toggle('header-height-animated', this._dayHeaderAnimationReady);
+        const height = `${dayHeaderHeight}px`;
+        this.querySelectorAll('.day-header, .time-axis-spacer, .time-axis-top-fade')
+            .forEach((element) => { element.style.height = height; });
+        this.querySelectorAll('.day-header, .time-axis, .calendar-viewport')
+            .forEach((element) => element.style.setProperty('--day-header-height', height));
+        this._dayHeaderHeight = dayHeaderHeight;
+        if (!this._dayHeaderAnimationReady) {
+            requestAnimationFrame(() => {
+                if (this._dayHeaderHeight === dayHeaderHeight) {
+                    this._dayHeaderAnimationReady = true;
+                    this.querySelector('ha-card')?.classList.add('header-height-animated');
+                }
+            });
+        }
+    }
     /** Patch only the day columns whose cache entries changed; never recreate the viewport. */
     updateLoadedDayColumns(dayKeys) {
         if (!this._config)
@@ -1458,10 +1484,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 .filter(({ event }) => allDayEventPlacementForDay(event, new Date(year, month, date)) !== undefined)
                 .length;
         })));
-        this.querySelectorAll('.day-header, .time-axis, .calendar-viewport')
-            .forEach((element) => element.style.setProperty('--day-header-height', `${dayHeaderHeight}px`));
-        this.querySelectorAll('.time-axis-top-fade')
-            .forEach((element) => { element.style.height = `${dayHeaderHeight}px`; });
+        this.updateDayHeaderHeight(dayHeaderHeight);
         this.updateNowLine();
     }
     showEventDetails(eventIndex) {
@@ -1805,6 +1828,7 @@ class MultiDayCalendarCard extends HTMLElement {
             : days;
         const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
         const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...lookAroundDays.map((day) => this.eventsForDay(day).filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
+        this._dayHeaderHeight = dayHeaderHeight;
         const firstWholeHourAfterStart = (Math.floor(startMinutes / 60) + 1) * 60;
         const timeLabelMinutes = [
             startMinutes,
@@ -1959,6 +1983,8 @@ class MultiDayCalendarCard extends HTMLElement {
       .loading-indicator::before { content: ''; position: absolute; inset: 0; width: 38%; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-color) 55%, white), var(--primary-color), color-mix(in srgb, var(--primary-color) 55%, white), transparent); animation: calendar-loading-sheen 1.15s ease-in-out infinite; }
       @keyframes calendar-loading-sheen { from { transform: translateX(-125%); } to { transform: translateX(325%); } }
       @media (prefers-reduced-motion: reduce) { .loading-indicator::before { width: 100%; transform: none; animation: none; background: var(--primary-color); } }
+      .header-height-animated .day-header, .header-height-animated .time-axis-spacer, .header-height-animated .time-axis-top-fade { transition: height 220ms ease; }
+      @media (prefers-reduced-motion: reduce) { .header-height-animated .day-header, .header-height-animated .time-axis-spacer, .header-height-animated .time-axis-top-fade { transition: none; } }
       .wrapper { padding: ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px ${CALENDAR_VISUAL_LAYOUT.paddingRightPx}px 12px ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px; overflow-x: auto; }
       .wrapper.fixed-height { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; }
       .fixed-height-title { flex: 0 0 auto; margin: 8px 0 16px; font-size: 24px; font-weight: 400; line-height: 1.2; }
