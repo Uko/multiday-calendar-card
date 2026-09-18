@@ -1410,6 +1410,17 @@ class MultiDayCalendarCard extends HTMLElement {
             });
         }
     }
+    updateHeaderForDays(days) {
+        this.updateDayHeaderHeight(calendarHeaderHeight(Math.max(0, ...days.map((day) => this.eventsForDay(day)
+            .filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined)
+            .length))));
+    }
+    updateHeaderForViewport(viewport) {
+        const days = viewport && this._lookAroundInitialized
+            ? this.viewportDays(viewport)
+            : this.normalDisplayDays();
+        this.updateHeaderForDays(days);
+    }
     /** Patch only the day columns whose cache entries changed; never recreate the viewport. */
     updateLoadedDayColumns(dayKeys) {
         if (!this._config)
@@ -1478,13 +1489,7 @@ class MultiDayCalendarCard extends HTMLElement {
             timeline.insertAdjacentHTML('beforeend', `${events}${overflows}`);
             this.bindEventActions(column);
         }
-        const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...Array.from(this.querySelectorAll('.day-column[data-day]')).map((column) => {
-            const [year, month, date] = column.dataset.day.split('-').map(Number);
-            return this.eventsForDay(new Date(year, month, date))
-                .filter(({ event }) => allDayEventPlacementForDay(event, new Date(year, month, date)) !== undefined)
-                .length;
-        })));
-        this.updateDayHeaderHeight(dayHeaderHeight);
+        this.updateHeaderForViewport(this.querySelector('.calendar-viewport') ?? undefined);
         this.updateNowLine();
     }
     showEventDetails(eventIndex) {
@@ -1760,6 +1765,7 @@ class MultiDayCalendarCard extends HTMLElement {
         viewport.addEventListener('scroll', () => {
             // Native scrolling remains untouched; this is only a cache-miss check for days
             // intersecting the viewport. Cached and in-flight days produce no extra API call.
+            this.updateHeaderForViewport(viewport);
             void this.loadEvents(false, this.viewportDays(viewport));
             if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis'))
                 timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
@@ -2023,7 +2029,7 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-columns.look-around-vertical:not(.look-around) { grid-template-columns: repeat(${config.days}, minmax(0, 1fr)); }
       .day-columns.look-around-vertical .day-header { position: sticky; top: 0; z-index: 3; background: var(--card-background-color); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
-      .day-columns.fixed-height { height: 100%; }
+      .day-columns.fixed-height { box-sizing: border-box; height: 100%; padding-bottom: 7px; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
       .day-column.skipped-days-after { border-right-width: 3px; }
       .day-column.before-look-around-anchor { border-right: 0; }
