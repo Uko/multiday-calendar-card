@@ -1032,8 +1032,13 @@ function nowLineTopPercent(day, now, startMinutes, endMinutes) {
 class MultiDayCalendarCard extends HTMLElement {
     constructor() {
         super(...arguments);
-        this._events = [];
+        /** Events are cached by displayed local day, not by the whole 180-day look-around strip. */
+        this._eventsByDay = new Map();
+        /** Event action indices are rebuilt together with the rendered DOM. */
+        this._renderedEvents = [];
+        this._loadingDays = new Set();
         this._loading = false;
+        this._eventCacheGeneration = 0;
         this._failedFetchAttempts = 0;
         this._lastEventsUpdateMs = 0;
         this._lookAroundAnimating = false;
@@ -1137,7 +1142,7 @@ class MultiDayCalendarCard extends HTMLElement {
             return;
         this._configurationKey = configurationKey;
         this._config = nextConfig;
-        this._requestKey = undefined;
+        this.invalidateEventCache();
         this._activeStartDay = undefined;
         this.onNewStartDate(this.resolveStartDay());
         this.cancelRecoveryRefresh();
@@ -1292,52 +1297,81 @@ class MultiDayCalendarCard extends HTMLElement {
         if (this._activeStartDay && sameLocalDay(this._activeStartDay, startDay))
             return false;
         this._activeStartDay = startDay;
-        this._requestKey = undefined;
+        this.invalidateEventCache();
         return true;
     }
-    async loadEvents(force = false) {
+    invalidateEventCache() {
+        this._eventCacheGeneration += 1;
+        this._eventsByDay.clear();
+        this._loadingDays.clear();
+    }
+    normalDisplayDays() {
+        if (!this._config)
+            return [];
+        return visibleDays(this._activeStartDay ?? this.resolveStartDay(), this._config.days, this._config.skip_days);
+    }
+    eventsForDay(day) {
+        return this._eventsByDay.get(localDateKey(day)) ?? [];
+    }
+    async loadEvents(force = false, requestedDays) {
         if (!this._config || !this._hass)
             return;
-        const range = eventRangeForDays(this._activeStartDay ?? this.resolveStartDay(), this._config.days, this._config.skip_days);
-        const key = JSON.stringify({
-            calendars: this._config.calendars,
-            start: range.start.toISOString(),
-            end: range.end.toISOString(),
+        const normalDays = this.normalDisplayDays();
+        const days = requestedDays ?? normalDays;
+        const targetKeys = new Set(days.map(localDateKey));
+        const normalKeys = new Set(normalDays.map(localDateKey));
+        if (force) {
+            // A scheduled refresh keeps only the normal slab warm. Panned data is deliberately
+            // evicted and will be requested again only when its day re-enters the viewport.
+            for (const key of this._eventsByDay.keys()) {
+                if (!normalKeys.has(key) || targetKeys.has(key))
+                    this._eventsByDay.delete(key);
+            }
+        }
+        const missingDays = days.filter((day) => {
+            const key = localDateKey(day);
+            return !this._eventsByDay.has(key) && !this._loadingDays.has(key);
         });
-        if (!force && key === this._requestKey)
+        if (missingDays.length === 0)
             return;
-        this._requestKey = key;
+        const start = new Date(missingDays[0]);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(missingDays[missingDays.length - 1]);
+        end.setHours(0, 0, 0, 0);
+        end.setDate(end.getDate() + 1);
+        const generation = this._eventCacheGeneration;
+        const requestedKeys = missingDays.map(localDateKey);
+        requestedKeys.forEach((key) => this._loadingDays.add(key));
         this._loading = true;
         this._error = undefined;
-        this.render();
         try {
             const eventGroups = await Promise.all(this._config.calendars.map(async (calendar) => ({
                 calendar,
-                events: await this._hass.callApi('get', buildCalendarEventsPath(calendar.entity, range.start, range.end)),
+                events: await this._hass.callApi('get', buildCalendarEventsPath(calendar.entity, start, end)),
             })));
-            if (this._requestKey !== key)
+            if (generation !== this._eventCacheGeneration)
                 return;
-            this._events = eventGroups.flatMap(({ calendar, events }) => events.map((event) => ({ calendar, event })));
+            const events = eventGroups.flatMap(({ calendar, events: calendarEvents }) => calendarEvents.map((event) => ({ calendar, event })));
+            requestedKeys.forEach((key) => this._eventsByDay.set(key, events));
             this._lastEventsUpdateMs = Date.now();
             this._failedFetchAttempts = 0;
             this.cancelRecoveryRefresh();
         }
         catch (error) {
-            if (this._requestKey !== key)
+            if (generation !== this._eventCacheGeneration)
                 return;
-            this._events = [];
             this._error = error instanceof Error ? error.message : 'Unable to load calendar events';
             this.scheduleRecoveryRefresh();
         }
         finally {
-            if (this._requestKey === key) {
-                this._loading = false;
+            requestedKeys.forEach((key) => this._loadingDays.delete(key));
+            this._loading = this._loadingDays.size > 0;
+            if (generation === this._eventCacheGeneration)
                 this.render();
-            }
         }
     }
     showEventDetails(eventIndex) {
-        const loadedEvent = this._events[eventIndex];
+        const loadedEvent = this._renderedEvents[eventIndex];
         if (!loadedEvent)
             return;
         const locationMapEnabled = this._config?.show_location_map === true &&
@@ -1446,6 +1480,19 @@ class MultiDayCalendarCard extends HTMLElement {
             this._lookAroundResetTimerId = undefined;
             this.resetLookAround();
         }, LOOK_AROUND_RESET_DELAY_MS);
+    }
+    viewportDays(viewport) {
+        const viewportBounds = viewport.getBoundingClientRect();
+        return Array.from(viewport.querySelectorAll('.day-column[data-day]'))
+            .filter((column) => {
+            const bounds = column.getBoundingClientRect();
+            return bounds.right > viewportBounds.left && bounds.left < viewportBounds.right &&
+                bounds.bottom > viewportBounds.top && bounds.top < viewportBounds.bottom;
+        })
+            .map((column) => {
+            const [year, month, day] = column.dataset.day.split('-').map(Number);
+            return new Date(year, month, day);
+        });
     }
     bindLookAround() {
         if (!this._config || this._config.look_around === 'none')
@@ -1586,6 +1633,9 @@ class MultiDayCalendarCard extends HTMLElement {
                 timeAxisBottomFade?.classList.toggle('is-active', active);
         };
         viewport.addEventListener('scroll', () => {
+            // Native scrolling remains untouched; this is only a cache-miss check for days
+            // intersecting the viewport. Cached and in-flight days produce no extra API call.
+            void this.loadEvents(false, this.viewportDays(viewport));
             if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis'))
                 timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
             setTimeAxisBottomFadeActive(Math.abs(viewport.scrollTop - startTop) >= 0.5);
@@ -1605,7 +1655,13 @@ class MultiDayCalendarCard extends HTMLElement {
     render() {
         if (!this._config)
             return;
+        // Loading a newly exposed cached day must not reset the native scroll coordinate.
+        const previousViewport = this.querySelector('.calendar-viewport');
+        const preservedScrollPosition = previousViewport === null
+            ? undefined
+            : { left: previousViewport.scrollLeft, top: previousViewport.scrollTop };
         const config = this._config;
+        this._renderedEvents = [];
         const now = new Date();
         const range = eventRangeForDays(this._activeStartDay ?? this.resolveStartDay(now), config.days, config.skip_days);
         const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
@@ -1643,7 +1699,7 @@ class MultiDayCalendarCard extends HTMLElement {
             ]
             : days;
         const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
-        const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...lookAroundDays.map((day) => this._events.filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
+        const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...lookAroundDays.map((day) => this.eventsForDay(day).filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
         const firstWholeHourAfterStart = (Math.floor(startMinutes / 60) + 1) * 60;
         const timeLabelMinutes = [
             startMinutes,
@@ -1671,14 +1727,15 @@ class MultiDayCalendarCard extends HTMLElement {
         }).join('');
         const dayColumns = lookAroundDays
             .map((day, index) => {
+            const dayEvents = this.eventsForDay(day);
             const hasSkippedDaysAfter = index < lookAroundDays.length - 1 && hasSkippedDaysBetween(day, lookAroundDays[index + 1]);
             const isLookAroundAnchor = horizontalLookAround && index === LOOK_AROUND_BUFFER_DAYS;
             const isBeforeLookAroundAnchor = horizontalLookAround && index === LOOK_AROUND_BUFFER_DAYS - 1;
             const anchorFollowsSkippedDays = isLookAroundAnchor && hasSkippedDaysBetween(lookAroundDays[index - 1], day);
-            const allDayPlacements = this._events
-                .map(({ calendar, event }, eventIndex) => ({
+            const allDayPlacements = dayEvents
+                .map(({ calendar, event }) => ({
                 calendar,
-                eventIndex,
+                eventIndex: this._renderedEvents.push({ calendar, event }) - 1,
                 placement: allDayEventPlacementForDay(event, day),
             }))
                 .filter((item) => item.placement !== undefined);
@@ -1689,10 +1746,10 @@ class MultiDayCalendarCard extends HTMLElement {
                 return `<div class="all-day-event${interactive ? ' interactive-event' : ''}"${interactive ? ` data-event-index="${eventIndex}" role="button" tabindex="0"` : ''} style="--event-color: ${safeColor(calendar.color)}" title="${escapeHtml(`${placement.summary} — ${calendarName}`)}">${escapeHtml(placement.summary)}</div>`;
             })
                 .join('');
-            const placements = this._events
-                .map(({ calendar, event }, eventIndex) => ({
+            const placements = dayEvents
+                .map(({ calendar, event }) => ({
                 calendar,
-                eventIndex,
+                eventIndex: this._renderedEvents.push({ calendar, event }) - 1,
                 placement: eventPlacementForDay(event, day, startMinutes, endMinutes),
             }))
                 .filter((item) => item.placement !== undefined);
@@ -1759,7 +1816,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 ? `<div class="status error">Unable to load calendar events: ${escapeHtml(this._error)}</div>`
                 : config.calendars.length === 0
                     ? '<div class="status">Add one or more calendar.* entities in the card configuration.</div>'
-                    : this._events.length === 0
+                    : days.every((day) => this.eventsForDay(day).length === 0)
                         ? '<div class="status">No timed events in this view.</div>'
                         : '';
         this.innerHTML = `
@@ -1865,6 +1922,17 @@ class MultiDayCalendarCard extends HTMLElement {
         this.bindEventActions();
         if (horizontalLookAround || verticalLookAround)
             this.bindLookAround();
+        if (preservedScrollPosition) {
+            // bindLookAround establishes its origin on two animation frames; restore after it
+            // so fetching data never moves content beneath the user's finger.
+            requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+                const viewport = this.querySelector('.calendar-viewport');
+                if (!viewport)
+                    return;
+                viewport.scrollLeft = preservedScrollPosition.left;
+                viewport.scrollTop = preservedScrollPosition.top;
+            })));
+        }
     }
 }
 customElements.define('multiday-calendar-card', MultiDayCalendarCard);

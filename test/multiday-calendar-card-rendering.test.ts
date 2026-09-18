@@ -152,3 +152,44 @@ test('Home Assistant reconnect refreshes calendar events without re-rendering th
   assert.deepEqual(reloads, [true]);
   assert.equal(renderCount, 0);
 });
+
+test('look-around caches an exposed day, avoids duplicate requests, and evicts it on normal refresh', async () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  const requests: string[] = [];
+  const card = new CalendarCard() as FakeHTMLElement & {
+    setConfig(config: { type: string; calendars: Array<{ entity: string }>; days: number; look_around: string }): void;
+    hass: { callApi<T>(method: string, path: string): Promise<T> };
+    render(): void;
+    loadEvents(force?: boolean, days?: readonly Date[]): Promise<void>;
+    _activeStartDay: Date;
+    _hass: { callApi<T>(method: string, path: string): Promise<T> };
+    _eventsByDay: Map<string, unknown>;
+  };
+  card.render = () => undefined;
+  card.setConfig({
+    type: 'custom:multiday-calendar-card',
+    calendars: [{ entity: 'calendar.work' }],
+    days: 2,
+    look_around: 'horizontal',
+  });
+  card._activeStartDay = new Date(2026, 0, 1);
+  card._hass = {
+    callApi: async <T>(_method: string, path: string) => {
+      requests.push(path);
+      return [] as T;
+    },
+  };
+
+  const pannedDay = new Date(2026, 0, 10);
+  await card.loadEvents(false, [pannedDay]);
+  await card.loadEvents(false, [pannedDay]);
+  assert.equal(requests.length, 1);
+  assert.match(requests[0], /start=2026-01-10T00%3A00%3A00.000Z/);
+  assert.equal(card._eventsByDay.has('2026-0-10'), true);
+
+  await card.loadEvents(true);
+  assert.equal(card._eventsByDay.has('2026-0-10'), false);
+  assert.equal(requests.length, 2);
+});
