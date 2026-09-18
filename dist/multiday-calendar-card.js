@@ -1712,6 +1712,13 @@ class MultiDayCalendarCard extends HTMLElement {
             // Positioning changes the visible columns programmatically. Recalculate from the
             // positioned native viewport, rather than retaining the initial buffered-strip max.
             this.updateHeaderForViewport(viewport);
+            // The first positioning pass can run before the browser has committed the scroll
+            // geometry. Repeat the read on the next frame so a one-pixel overlap under the
+            // sticky axis cannot leave a phantom all-day row until the user scrolls.
+            requestAnimationFrame(() => {
+                if (this._lookAroundInitialized)
+                    this.updateHeaderForViewport(viewport);
+            });
             this._lookAroundResizeObserver?.disconnect();
             this._lookAroundResizeObserver = undefined;
             return true;
