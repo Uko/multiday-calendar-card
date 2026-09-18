@@ -1154,10 +1154,8 @@ class MultiDayCalendarCard extends HTMLElement {
     const status = this._error
       ? `<div class="status error">Unable to load calendar events: ${escapeHtml(this._error)}</div>`
       : config.calendars.length === 0
-          ? '<div class="status">Add one or more calendar.* entities in the card configuration.</div>'
-          : days.every((day) => this.eventsForDay(day).length === 0)
-            ? '<div class="status">No timed events in this view.</div>'
-            : '';
+        ? '<div class="status">Add one or more calendar.* entities in the card configuration.</div>'
+        : '';
 
     this.innerHTML = `
       <ha-card class="${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? ` style="height: ${config.height}px"` : ''}${titlePlacement.cardHeader ? ` header="${escapeHtml(titlePlacement.cardHeader)}"` : ''}>
