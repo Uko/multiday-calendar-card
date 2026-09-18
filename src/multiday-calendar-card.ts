@@ -1087,7 +1087,7 @@ class MultiDayCalendarCard extends HTMLElement {
     const dayHeaderHeight = calendarHeaderHeight(
       Math.max(
         0,
-        ...lookAroundDays.map((day) =>
+        ...days.map((day) =>
           this.eventsForDay(day).filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length,
         ),
       ),

@@ -1881,7 +1881,7 @@ class MultiDayCalendarCard extends HTMLElement {
             ]
             : days;
         const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
-        const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...lookAroundDays.map((day) => this.eventsForDay(day).filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
+        const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...days.map((day) => this.eventsForDay(day).filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));
         this._dayHeaderHeight = dayHeaderHeight;
         const firstWholeHourAfterStart = (Math.floor(startMinutes / 60) + 1) * 60;
         const timeLabelMinutes = [
