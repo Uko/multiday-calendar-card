@@ -995,7 +995,7 @@ class MultiDayCalendarCard extends HTMLElement {
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>`}
-            ${verticalLookAround ? '<div class="time-axis-top-fade" aria-hidden="true"></div>' : ''}
+            ${verticalLookAround ? `<div class="time-axis-top-fade" style="height: ${dayHeaderHeight}px" aria-hidden="true"></div>` : ''}
             <div class="time-axis-bottom-fade" aria-hidden="true"></div>
             ${verticalLookAround
               ? `<div class="calendar-viewport native-vertical-time-axis${horizontalLookAround ? ' look-around' : ''} look-around-vertical" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px">
