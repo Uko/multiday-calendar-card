@@ -995,6 +995,7 @@ class MultiDayCalendarCard extends HTMLElement {
               <div class="time-axis-spacer"></div>
               <div class="time-labels">${timeLabels}</div>
             </div>`}
+            ${verticalLookAround ? '<div class="time-axis-top-fade" aria-hidden="true"></div>' : ''}
             <div class="time-axis-bottom-fade" aria-hidden="true"></div>
             ${verticalLookAround
               ? `<div class="calendar-viewport native-vertical-time-axis${horizontalLookAround ? ' look-around' : ''} look-around-vertical" style="--day-header-height: ${dayHeaderHeight}px; --look-around-viewport-timeline-height: ${baseTimelineHeight}px">
@@ -1033,11 +1034,11 @@ class MultiDayCalendarCard extends HTMLElement {
       .time-axis.fixed-height { height: 100%; }
       .time-axis-spacer { height: var(--day-header-height); border-bottom: ${CALENDAR_VISUAL_LAYOUT.timeAxisHeaderDivider ? '1px solid var(--divider-color)' : 'none'}; }
       .time-labels { position: relative; height: calc(100% - var(--day-header-height) - 7px); }
+      .time-axis-top-fade { position: absolute; z-index: 5; top: -3px; left: 0; width: var(--time-axis-width); height: var(--day-header-height); pointer-events: none; background: linear-gradient(to bottom, var(--card-background-color) 0, var(--card-background-color) calc(100% - 10px), transparent 100%); }
       .time-axis-bottom-fade { position: absolute; z-index: 5; display: none; left: 0; width: var(--time-axis-width); bottom: 0; height: 10px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--card-background-color)); }
       .time-axis-bottom-fade.is-active { display: block; }
       .time-label { position: absolute; right: ${CALENDAR_VISUAL_LAYOUT.axisLabelGapPx}px; transform: translateY(-50%); white-space: nowrap; }
       .time-label:last-child { transform: translateY(-50%); }
-      .time-axis.look-around-vertical-axis::after { content: ''; position: absolute; z-index: 2; top: -3px; left: 0; right: 0; height: var(--day-header-height); pointer-events: none; background: linear-gradient(to bottom, var(--card-background-color) 0, var(--card-background-color) calc(100% - 10px), transparent 100%); }
       .calendar-viewport { min-width: 0; }
       .calendar-viewport.look-around { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; container-type: inline-size; }
       .calendar-viewport.look-around-vertical { overflow-y: auto; overscroll-behavior-y: contain; height: calc(var(--day-header-height) + var(--look-around-viewport-timeline-height) + 7px); scrollbar-width: thin; }
