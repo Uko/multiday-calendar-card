@@ -547,6 +547,7 @@ class MultiDayCalendarCard extends HTMLElement {
     requestedKeys.forEach((key) => this._loadingDays.add(key));
     this._loading = true;
     this._error = undefined;
+    this.updateLoadingIndicator();
 
     try {
       const eventGroups = await Promise.all(
@@ -574,8 +575,17 @@ class MultiDayCalendarCard extends HTMLElement {
     } finally {
       requestedKeys.forEach((key) => this._loadingDays.delete(key));
       this._loading = this._loadingDays.size > 0;
+      this.updateLoadingIndicator();
       if (generation === this._eventCacheGeneration) this.updateLoadedDayColumns(requestedKeys);
     }
+  }
+
+  /** The indicator is an overlay so activity never changes the card's measured layout. */
+  private updateLoadingIndicator(): void {
+    const indicator = this.querySelector<HTMLElement>('.loading-indicator');
+    if (!indicator) return;
+    indicator.classList.toggle('is-loading', this._loading);
+    indicator.setAttribute('aria-hidden', String(!this._loading));
   }
 
   /** Patch only the day columns whose cache entries changed; never recreate the viewport. */
@@ -1141,11 +1151,9 @@ class MultiDayCalendarCard extends HTMLElement {
     const title = displayTitle(config.title);
     const titlePlacement = cardTitlePlacement(config.title, fixedHeight);
     const accessibleTitle = title ?? 'Multi-day calendar';
-    const status = this._loading
-      ? '<div class="status">Loading calendar events…</div>'
-      : this._error
-        ? `<div class="status error">Unable to load calendar events: ${escapeHtml(this._error)}</div>`
-        : config.calendars.length === 0
+    const status = this._error
+      ? `<div class="status error">Unable to load calendar events: ${escapeHtml(this._error)}</div>`
+      : config.calendars.length === 0
           ? '<div class="status">Add one or more calendar.* entities in the card configuration.</div>'
           : days.every((day) => this.eventsForDay(day).length === 0)
             ? '<div class="status">No timed events in this view.</div>'
@@ -1153,6 +1161,7 @@ class MultiDayCalendarCard extends HTMLElement {
 
     this.innerHTML = `
       <ha-card class="${fixedHeight ? 'fixed-height' : ''}"${fixedHeight ? ` style="height: ${config.height}px"` : ''}${titlePlacement.cardHeader ? ` header="${escapeHtml(titlePlacement.cardHeader)}"` : ''}>
+        <div class="loading-indicator${this._loading ? ' is-loading' : ''}" aria-hidden="${!this._loading}"></div>
         <div class="wrapper ${fixedHeight ? 'fixed-height' : ''}">
           ${titlePlacement.bodyTitle ? `<h1 class="fixed-height-title">${escapeHtml(titlePlacement.bodyTitle)}</h1>` : ''}
           ${status}
@@ -1184,7 +1193,12 @@ class MultiDayCalendarCard extends HTMLElement {
 
     const style = document.createElement('style');
     style.textContent = `
-      ha-card { display: block; }
+      ha-card { position: relative; display: block; overflow: hidden; }
+      .loading-indicator { position: absolute; z-index: 10; top: 0; right: 0; left: 0; height: 4px; overflow: hidden; pointer-events: none; visibility: hidden; opacity: 0; transition: opacity 160ms ease, visibility 0s linear 160ms; }
+      .loading-indicator.is-loading { visibility: visible; opacity: 1; transition: opacity 160ms ease; }
+      .loading-indicator::before { content: ''; position: absolute; inset: 0; width: 38%; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-color) 55%, white), var(--primary-color), color-mix(in srgb, var(--primary-color) 55%, white), transparent); animation: calendar-loading-sheen 1.15s ease-in-out infinite; }
+      @keyframes calendar-loading-sheen { from { transform: translateX(-125%); } to { transform: translateX(325%); } }
+      @media (prefers-reduced-motion: reduce) { .loading-indicator::before { width: 100%; transform: none; animation: none; background: var(--primary-color); } }
       .wrapper { padding: ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px ${CALENDAR_VISUAL_LAYOUT.paddingRightPx}px 12px ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px; overflow-x: auto; }
       .wrapper.fixed-height { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; }
       .fixed-height-title { flex: 0 0 auto; margin: 8px 0 16px; font-size: 24px; font-weight: 400; line-height: 1.2; }

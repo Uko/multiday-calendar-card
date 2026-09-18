@@ -170,14 +170,17 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
     render(): void;
     loadEvents(force?: boolean, days?: readonly Date[]): Promise<void>;
     updateLoadedDayColumns(dayKeys: readonly string[]): void;
+    updateLoadingIndicator(): void;
     _activeStartDay: Date;
     _hass: { callApi<T>(method: string, path: string): Promise<T> };
     _eventsByDay: Map<string, unknown>;
   };
   let renderCount = 0;
   const patchedDays: string[][] = [];
+  const loadingTransitions: boolean[] = [];
   card.render = () => { renderCount += 1; };
   card.updateLoadedDayColumns = (dayKeys) => { patchedDays.push([...dayKeys]); };
+  card.updateLoadingIndicator = () => { loadingTransitions.push((card as unknown as { _loading: boolean })._loading); };
   card.setConfig({
     type: 'custom:multiday-calendar-card',
     calendars: [{ entity: 'calendar.work' }],
@@ -186,6 +189,7 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
   });
   card._activeStartDay = new Date(2026, 0, 1);
   renderCount = 0;
+  loadingTransitions.length = 0;
   card._hass = {
     callApi: async <T>(_method: string, path: string) => {
       requests.push(path);
@@ -198,6 +202,7 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
   await card.loadEvents(false, [pannedDay]);
   assert.equal(requests.length, 1);
   assert.equal(renderCount, 0);
+  assert.deepEqual(loadingTransitions, [true, false]);
   assert.deepEqual(patchedDays, [['2026-0-10']]);
   assert.match(requests[0], /start=2026-01-10T00%3A00%3A00.000Z/);
   assert.equal(card._eventsByDay.has('2026-0-10'), true);
@@ -205,4 +210,5 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
   await card.loadEvents(true);
   assert.equal(card._eventsByDay.has('2026-0-10'), false);
   assert.equal(requests.length, 2);
+  assert.deepEqual(loadingTransitions, [true, false, true, false]);
 });
