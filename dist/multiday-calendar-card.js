@@ -1416,10 +1416,10 @@ class MultiDayCalendarCard extends HTMLElement {
             .length))));
     }
     updateHeaderForViewport(viewport) {
-        const days = viewport && this._lookAroundInitialized
-            ? this.viewportDays(viewport)
-            : this.normalDisplayDays();
-        this.updateHeaderForDays(days);
+        // A viewport supplied by the native scroller is authoritative, including while
+        // look-around is completing its initial placement. Falling back to all configured
+        // days here leaves a stale all-day-event gap after horizontal panning.
+        this.updateHeaderForDays(viewport ? this.viewportDays(viewport) : this.normalDisplayDays());
     }
     /** Patch only the day columns whose cache entries changed; never recreate the viewport. */
     updateLoadedDayColumns(dayKeys) {
@@ -1671,6 +1671,9 @@ class MultiDayCalendarCard extends HTMLElement {
             accumulatedOriginScrollTop = 0;
             initialized = true;
             this._lookAroundInitialized = true;
+            // Positioning changes the visible columns programmatically. Recalculate from the
+            // positioned native viewport, rather than retaining the initial buffered-strip max.
+            this.updateHeaderForViewport(viewport);
             this._lookAroundResizeObserver?.disconnect();
             this._lookAroundResizeObserver = undefined;
             return true;
@@ -2029,7 +2032,9 @@ class MultiDayCalendarCard extends HTMLElement {
       .day-columns.look-around-vertical:not(.look-around) { grid-template-columns: repeat(${config.days}, minmax(0, 1fr)); }
       .day-columns.look-around-vertical .day-header { position: sticky; top: 0; z-index: 3; background: var(--card-background-color); }
       .day-columns.skipped-days-before { border-left-width: 2px; }
-      .day-columns.fixed-height { box-sizing: border-box; height: 100%; padding-bottom: 7px; }
+      /* Grid items stretch through a parent's padding area, so reserve the gutter by
+         reducing the fixed grid itself rather than padding that parent. */
+      .day-columns.fixed-height { height: calc(100% - 7px); align-self: start; }
       .day-column { min-width: 0; border-right: 1px solid var(--divider-color); }
       .day-column.skipped-days-after { border-right-width: 3px; }
       .day-column.before-look-around-anchor { border-right: 0; }
