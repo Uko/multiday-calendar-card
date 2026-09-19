@@ -232,6 +232,8 @@ class MultiDayCalendarCard extends HTMLElement {
   private _lookAroundAnimationFrameId?: number;
   private _lookAroundResizeObserver?: ResizeObserver;
   private _lookAroundAnimating = false;
+  /** Header/grid geometry is deferred until native scrolling or recentering has settled. */
+  private _lookAroundScrollInProgress = false;
   /** True only after the current DOM has been placed at its configured origin once. */
   private _lookAroundInitialized = false;
   private _dayHeaderHeight?: number;
@@ -735,7 +737,9 @@ class MultiDayCalendarCard extends HTMLElement {
       timeline.insertAdjacentHTML('beforeend', `${events}${overflows}`);
       this.bindEventActions(column);
     }
-    this.updateHeaderForViewport(this.querySelector<HTMLElement>('.calendar-viewport') ?? undefined);
+    if (!this._lookAroundScrollInProgress) {
+      this.updateHeaderForViewport(this.querySelector<HTMLElement>('.calendar-viewport') ?? undefined);
+    }
     this.updateNowLine();
   }
 
@@ -796,6 +800,7 @@ class MultiDayCalendarCard extends HTMLElement {
       this._lookAroundResizeObserver = undefined;
     }
     this._lookAroundAnimating = false;
+    this._lookAroundScrollInProgress = false;
   }
 
   private animateLookAroundScroll(viewport: HTMLElement, left: number, top: number, onComplete?: () => void): void {
@@ -942,6 +947,8 @@ class MultiDayCalendarCard extends HTMLElement {
     requestAnimationFrame(() => requestAnimationFrame(positionAtStartDay));
     const settle = (): void => {
       if (!initialized || this._lookAroundAnimating) return;
+      this._lookAroundScrollInProgress = false;
+      this.updateHeaderForViewport(viewport);
       this.scheduleLookAroundReset();
     };
     const releaseOriginLock = (deltaLeft: number, deltaTop: number): void => {
@@ -962,6 +969,8 @@ class MultiDayCalendarCard extends HTMLElement {
     let lastTouchY: number | undefined;
     viewport.addEventListener('look-around-reset', () => {
       hideRecenterButton();
+      this._lookAroundScrollInProgress = false;
+      this.updateHeaderForViewport(viewport);
       this.querySelector<HTMLElement>('.time-axis-bottom-fade')?.classList.remove('is-active');
       originLocked = true;
       accumulatedOriginScrollLeft = 0;
@@ -1013,9 +1022,9 @@ class MultiDayCalendarCard extends HTMLElement {
       if (vertical) timeAxisBottomFade?.classList.toggle('is-active', active);
     };
     viewport.addEventListener('scroll', () => {
-      // Native scrolling remains untouched; this is only a cache-miss check for days
-      // intersecting the viewport. Cached and in-flight days produce no extra API call.
-      this.updateHeaderForViewport(viewport);
+      // Native scrolling remains untouched; it only requests cache-miss days. Geometry
+      // is deferred until scrolling settles so the grid does not resize mid-gesture.
+      if (initialized || this._lookAroundAnimating) this._lookAroundScrollInProgress = true;
       void this.loadEvents(false, this.viewportDays(viewport));
       if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis')) timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
       setTimeAxisBottomFadeActive(Math.abs(viewport.scrollTop - startTop) > 1);
