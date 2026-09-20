@@ -12,6 +12,7 @@ import {
   normalizeLookAroundMode,
   rawScrollToCalendarPoint,
   calendarPointToRawScroll,
+  rebaseRawScrollForGeometry,
 } from '../src/look-around-model';
 
 test('look-around waits 30 seconds after horizontal scrolling before returning to its start-day position', () => {
@@ -35,6 +36,28 @@ test('calendar and raw scroll coordinates are exact inverses around the display-
   assert.deepEqual(raw, { left: 12_601.125, top: 367.125 });
   assert.deepEqual(rawScrollToCalendarPoint(raw, geometry), calendarPoint);
   assert.deepEqual(rawScrollToCalendarPoint(geometry.originRawScroll, geometry), { x: 0, y: 0 });
+});
+
+test('header geometry change preserves the display-start origin at calendar point zero', () => {
+  const beforeHeaderChange = {
+    originRawScroll: { left: 12_480.25, top: 316.5 },
+    dayWidthPx: 241.75,
+    pixelsPerMinute: 0.9,
+  };
+  const afterHeaderChange = {
+    originRawScroll: { left: 12_480.25, top: 360.5 },
+    dayWidthPx: 241.75,
+    pixelsPerMinute: 0.85,
+  };
+
+  const rawAfterHeaderChange = rebaseRawScrollForGeometry(
+    beforeHeaderChange.originRawScroll,
+    beforeHeaderChange,
+    afterHeaderChange,
+  );
+
+  assert.deepEqual(rawAfterHeaderChange, afterHeaderChange.originRawScroll);
+  assert.deepEqual(rawScrollToCalendarPoint(rawAfterHeaderChange, afterHeaderChange), { x: 0, y: 0 });
 });
 
 test('look-around modes default invalid input to static and independently select axes', () => {

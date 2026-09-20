@@ -486,6 +486,10 @@ function calendarPointToRawScroll(point, geometry) {
         top: geometry.originRawScroll.top + point.y * geometry.pixelsPerMinute,
     };
 }
+/** Preserve a semantic calendar point while the header or timeline geometry changes. */
+function rebaseRawScrollForGeometry(raw, previous, next) {
+    return calendarPointToRawScroll(rawScrollToCalendarPoint(raw, previous), next);
+}
 const LOOK_AROUND_RESET_DELAY_MS = 30_000;
 /** Snap to the configured start position only when resting within this distance. */
 const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
@@ -1592,9 +1596,17 @@ class MultiDayCalendarCard extends HTMLElement {
             cancelAnimationFrame(this._lookAroundAnimationFrameId);
             this._lookAroundAnimationFrameId = undefined;
         }
+        if (this._lookAroundGeometryAnimationFrameId !== undefined) {
+            cancelAnimationFrame(this._lookAroundGeometryAnimationFrameId);
+            this._lookAroundGeometryAnimationFrameId = undefined;
+        }
         if (this._lookAroundResizeObserver !== undefined) {
             this._lookAroundResizeObserver.disconnect();
             this._lookAroundResizeObserver = undefined;
+        }
+        if (this._lookAroundHeaderResizeObserver !== undefined) {
+            this._lookAroundHeaderResizeObserver.disconnect();
+            this._lookAroundHeaderResizeObserver = undefined;
         }
         this._lookAroundAnimating = false;
         this._lookAroundScrollInProgress = false;
@@ -1783,22 +1795,37 @@ class MultiDayCalendarCard extends HTMLElement {
             accumulatedOriginScrollTop = 0;
         };
         const refreshGeometryAfterHeaderUpdate = () => {
-            const currentPoint = scrollGeometry
-                ? rawScrollToCalendarPoint({ left: viewport.scrollLeft, top: viewport.scrollTop }, scrollGeometry)
-                : calendarOrigin;
+            const rawBeforeHeaderUpdate = { left: viewport.scrollLeft, top: viewport.scrollTop };
+            const previousGeometry = scrollGeometry;
             this.updateHeaderForViewport(viewport);
             const geometry = measureScrollGeometry();
             if (!geometry)
                 return;
+            const target = previousGeometry
+                ? rebaseRawScrollForGeometry(rawBeforeHeaderUpdate, previousGeometry, geometry)
+                : calendarPointToRawScroll(calendarOrigin, geometry);
             scrollGeometry = geometry;
             startLeft = geometry.originRawScroll.left;
             startTop = geometry.originRawScroll.top;
-            const target = calendarPointToRawScroll(currentPoint, geometry);
             if (horizontal)
                 viewport.scrollLeft = target.left;
             if (vertical)
                 viewport.scrollTop = target.top;
         };
+        const scheduleGeometryRefresh = () => {
+            if (this._lookAroundGeometryAnimationFrameId !== undefined)
+                return;
+            this._lookAroundGeometryAnimationFrameId = requestAnimationFrame(() => {
+                this._lookAroundGeometryAnimationFrameId = undefined;
+                if (this._lookAroundInitialized && !this._lookAroundAnimating)
+                    refreshGeometryAfterHeaderUpdate();
+            });
+        };
+        this._lookAroundHeaderResizeObserver?.disconnect();
+        this._lookAroundHeaderResizeObserver = new ResizeObserver(scheduleGeometryRefresh);
+        const header = viewport.querySelector('.day-header');
+        if (header)
+            this._lookAroundHeaderResizeObserver.observe(header);
         const resetLookAround = () => {
             if (!scrollGeometry)
                 return;

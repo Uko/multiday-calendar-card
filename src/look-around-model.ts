@@ -30,6 +30,15 @@ export function calendarPointToRawScroll(point: CalendarScrollPoint, geometry: C
   };
 }
 
+/** Preserve a semantic calendar point while the header or timeline geometry changes. */
+export function rebaseRawScrollForGeometry(
+  raw: RawScrollPoint,
+  previous: CalendarScrollGeometry,
+  next: CalendarScrollGeometry,
+): RawScrollPoint {
+  return calendarPointToRawScroll(rawScrollToCalendarPoint(raw, previous), next);
+}
+
 export const LOOK_AROUND_RESET_DELAY_MS = 30_000;
 /** Snap to the configured start position only when resting within this distance. */
 export const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
