@@ -789,7 +789,7 @@ class MultiDayCalendarCard extends HTMLElement {
     });
   }
 
-  private cancelLookAroundReset(): void {
+  private cancelPendingLookAroundMotion(): void {
     if (this._lookAroundResetTimerId !== undefined) {
       clearTimeout(this._lookAroundResetTimerId);
       this._lookAroundResetTimerId = undefined;
@@ -802,6 +802,12 @@ class MultiDayCalendarCard extends HTMLElement {
       cancelAnimationFrame(this._lookAroundAnimationFrameId);
       this._lookAroundAnimationFrameId = undefined;
     }
+    this._lookAroundAnimating = false;
+    this._lookAroundScrollInProgress = false;
+  }
+
+  private cancelLookAroundReset(): void {
+    this.cancelPendingLookAroundMotion();
     if (this._lookAroundGeometryAnimationFrameId !== undefined) {
       cancelAnimationFrame(this._lookAroundGeometryAnimationFrameId);
       this._lookAroundGeometryAnimationFrameId = undefined;
@@ -814,8 +820,6 @@ class MultiDayCalendarCard extends HTMLElement {
       this._lookAroundHeaderResizeObserver.disconnect();
       this._lookAroundHeaderResizeObserver = undefined;
     }
-    this._lookAroundAnimating = false;
-    this._lookAroundScrollInProgress = false;
   }
 
   private animateLookAroundScroll(viewport: HTMLElement, left: number, top: number, onComplete?: () => void): void {
@@ -1028,7 +1032,7 @@ class MultiDayCalendarCard extends HTMLElement {
       });
     };
     const cancelAnimation = (): void => {
-      if (this._lookAroundAnimating) this.cancelLookAroundReset();
+      if (this._lookAroundAnimating) this.cancelPendingLookAroundMotion();
     };
     let lastTouchX: number | undefined;
     let lastTouchY: number | undefined;
@@ -1044,7 +1048,7 @@ class MultiDayCalendarCard extends HTMLElement {
     recenterButton?.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.cancelLookAroundReset();
+      this.cancelPendingLookAroundMotion();
       resetLookAround();
     });
     viewport.addEventListener('wheel', (event) => {

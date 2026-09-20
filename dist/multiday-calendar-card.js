@@ -1583,7 +1583,7 @@ class MultiDayCalendarCard extends HTMLElement {
             });
         });
     }
-    cancelLookAroundReset() {
+    cancelPendingLookAroundMotion() {
         if (this._lookAroundResetTimerId !== undefined) {
             clearTimeout(this._lookAroundResetTimerId);
             this._lookAroundResetTimerId = undefined;
@@ -1596,6 +1596,11 @@ class MultiDayCalendarCard extends HTMLElement {
             cancelAnimationFrame(this._lookAroundAnimationFrameId);
             this._lookAroundAnimationFrameId = undefined;
         }
+        this._lookAroundAnimating = false;
+        this._lookAroundScrollInProgress = false;
+    }
+    cancelLookAroundReset() {
+        this.cancelPendingLookAroundMotion();
         if (this._lookAroundGeometryAnimationFrameId !== undefined) {
             cancelAnimationFrame(this._lookAroundGeometryAnimationFrameId);
             this._lookAroundGeometryAnimationFrameId = undefined;
@@ -1608,8 +1613,6 @@ class MultiDayCalendarCard extends HTMLElement {
             this._lookAroundHeaderResizeObserver.disconnect();
             this._lookAroundHeaderResizeObserver = undefined;
         }
-        this._lookAroundAnimating = false;
-        this._lookAroundScrollInProgress = false;
     }
     animateLookAroundScroll(viewport, left, top, onComplete) {
         if (this._lookAroundAnimationFrameId !== undefined)
@@ -1836,7 +1839,7 @@ class MultiDayCalendarCard extends HTMLElement {
         };
         const cancelAnimation = () => {
             if (this._lookAroundAnimating)
-                this.cancelLookAroundReset();
+                this.cancelPendingLookAroundMotion();
         };
         let lastTouchX;
         let lastTouchY;
@@ -1852,7 +1855,7 @@ class MultiDayCalendarCard extends HTMLElement {
         recenterButton?.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            this.cancelLookAroundReset();
+            this.cancelPendingLookAroundMotion();
             resetLookAround();
         });
         viewport.addEventListener('wheel', (event) => {
