@@ -29,10 +29,14 @@ import {
   LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX,
   LOOK_AROUND_RESET_DELAY_MS,
   LOOK_AROUND_VERTICAL_BUFFER_MINUTES,
+  calendarPointToRawScroll,
   hasHorizontalLookAround,
   hasVerticalLookAround,
   lookAroundVerticalRange,
   normalizeLookAroundMode,
+  rawScrollToCalendarPoint,
+  type CalendarScrollGeometry,
+  type CalendarScrollPoint,
   type LookAroundMode,
 } from './look-around-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
@@ -828,30 +832,11 @@ class MultiDayCalendarCard extends HTMLElement {
     this._lookAroundAnimationFrameId = requestAnimationFrame(animate);
   }
 
-  private resetLookAround(): void {
-    const viewport = this.querySelector<HTMLElement>('.calendar-viewport');
-    if (!viewport) return;
-    const anchor = viewport.querySelector<HTMLElement>('[data-look-around-anchor]');
-    const verticalAnchor = viewport.querySelector<HTMLElement>('[data-look-around-vertical-anchor]');
-    const nativeTimeAxisWidth = viewport.classList.contains('native-vertical-time-axis')
-      ? viewport.querySelector<HTMLElement>('.time-axis.native-vertical-time-axis')?.getBoundingClientRect().width ?? 0
-      : 0;
-    const left = anchor === null
-      ? viewport.scrollLeft
-      : viewport.scrollLeft + anchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left - nativeTimeAxisWidth;
-    const top = verticalAnchor === null
-      ? viewport.scrollTop
-      : Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector<HTMLElement>('.day-header')?.getBoundingClientRect().height ?? 0) + 1);
-    this.animateLookAroundScroll(viewport, left, top, () => {
-      viewport.dispatchEvent(new Event('look-around-reset'));
-    });
-  }
-
-  private scheduleLookAroundReset(): void {
+  private scheduleLookAroundReset(reset: () => void): void {
     if (this._lookAroundResetTimerId !== undefined) clearTimeout(this._lookAroundResetTimerId);
     this._lookAroundResetTimerId = window.setTimeout(() => {
       this._lookAroundResetTimerId = undefined;
-      this.resetLookAround();
+      reset();
     }, LOOK_AROUND_RESET_DELAY_MS);
   }
 
@@ -897,8 +882,45 @@ class MultiDayCalendarCard extends HTMLElement {
     };
     const showRecenterButton = (): void => { setRecenterButtonVisibility(true); };
     const hideRecenterButton = (): void => { setRecenterButtonVisibility(false); };
+    const calendarOrigin: CalendarScrollPoint = { x: 0, y: 0 };
     let startLeft = 0;
     let startTop = 0;
+    let scrollGeometry: CalendarScrollGeometry | undefined;
+    const measureScrollGeometry = (): CalendarScrollGeometry | undefined => {
+      const horizontalAnchor = anchorColumn();
+      const verticalAnchor = anchorVertical();
+      if ((horizontal && !horizontalAnchor) || (vertical && !verticalAnchor)) return undefined;
+      const viewportBounds = viewport.getBoundingClientRect();
+      const headerHeight = viewport.querySelector<HTMLElement>('.day-header')?.getBoundingClientRect().height ?? 0;
+      const verticalRange = lookAroundVerticalRange(
+        this._config!.look_around,
+        parseTime(this._config!.start_time)!,
+        parseTime(this._config!.end_time)!,
+      );
+      const timelineHeight = verticalAnchor?.parentElement?.getBoundingClientRect().height ?? 1;
+      const dayWidth = horizontalAnchor?.getBoundingClientRect().width ?? 1;
+      return {
+        originRawScroll: {
+          left: horizontal && horizontalAnchor
+            ? viewport.scrollLeft + horizontalAnchor.getBoundingClientRect().left - viewportBounds.left - nativeTimeAxisWidth()
+            : viewport.scrollLeft,
+          top: vertical && verticalAnchor
+            ? Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewportBounds.top - headerHeight + 1)
+            : viewport.scrollTop,
+        },
+        dayWidthPx: dayWidth,
+        pixelsPerMinute: timelineHeight / (verticalRange.endMinutes - verticalRange.startMinutes),
+      };
+    };
+    const isAtCalendarOrigin = (): boolean => {
+      if (!scrollGeometry) return true;
+      const point = rawScrollToCalendarPoint(
+        { left: viewport.scrollLeft, top: viewport.scrollTop },
+        scrollGeometry,
+      );
+      return (!horizontal || Math.abs(point.x) <= 1 / scrollGeometry.dayWidthPx) &&
+        (!vertical || Math.abs(point.y) <= 1 / scrollGeometry.pixelsPerMinute);
+    };
     let initialized = false;
     let originLocked = true;
     let accumulatedOriginScrollLeft = 0;
@@ -910,14 +932,13 @@ class MultiDayCalendarCard extends HTMLElement {
       const verticalAnchor = anchorVertical();
       if ((horizontal && (!horizontalAnchor || viewport.scrollWidth <= viewport.clientWidth)) ||
           (vertical && (!verticalAnchor || viewport.scrollHeight <= viewport.clientHeight))) return false;
-      if (horizontal && horizontalAnchor) {
-        startLeft = viewport.scrollLeft + horizontalAnchor.getBoundingClientRect().left - viewport.getBoundingClientRect().left - nativeTimeAxisWidth();
-        viewport.scrollLeft = scrollPositionToRestore?.left ?? startLeft;
-      }
-      if (vertical && verticalAnchor) {
-        startTop = Math.max(0, viewport.scrollTop + verticalAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (viewport.querySelector<HTMLElement>('.day-header')?.getBoundingClientRect().height ?? 0) + 1);
-        viewport.scrollTop = scrollPositionToRestore?.top ?? startTop;
-      }
+      const geometry = measureScrollGeometry();
+      if (!geometry) return false;
+      scrollGeometry = geometry;
+      startLeft = geometry.originRawScroll.left;
+      startTop = geometry.originRawScroll.top;
+      if (horizontal) viewport.scrollLeft = scrollPositionToRestore?.left ?? startLeft;
+      if (vertical) viewport.scrollTop = scrollPositionToRestore?.top ?? startTop;
       const restoredOffOrigin = scrollPositionToRestore !== undefined &&
         ((horizontal && Math.abs(viewport.scrollLeft - startLeft) > 1) ||
           (vertical && Math.abs(viewport.scrollTop - startTop) > 1));
@@ -930,12 +951,12 @@ class MultiDayCalendarCard extends HTMLElement {
       this._lookAroundInitialized = true;
       // Positioning changes the visible columns programmatically. Recalculate from the
       // positioned native viewport, rather than retaining the initial buffered-strip max.
-      this.updateHeaderForViewport(viewport);
+      refreshGeometryAfterHeaderUpdate();
       // The first positioning pass can run before the browser has committed the scroll
       // geometry. Repeat the read on the next frame so a one-pixel overlap under the
       // sticky axis cannot leave a phantom all-day row until the user scrolls.
       requestAnimationFrame(() => {
-        if (this._lookAroundInitialized) this.updateHeaderForViewport(viewport);
+        if (this._lookAroundInitialized) refreshGeometryAfterHeaderUpdate();
       });
       this._lookAroundResizeObserver?.disconnect();
       this._lookAroundResizeObserver = undefined;
@@ -948,8 +969,8 @@ class MultiDayCalendarCard extends HTMLElement {
     const settle = (): void => {
       if (!initialized || this._lookAroundAnimating) return;
       this._lookAroundScrollInProgress = false;
-      this.updateHeaderForViewport(viewport);
-      this.scheduleLookAroundReset();
+      refreshGeometryAfterHeaderUpdate();
+      this.scheduleLookAroundReset(resetLookAround);
     };
     const releaseOriginLock = (deltaLeft: number, deltaTop: number): void => {
       accumulatedOriginScrollLeft += deltaLeft;
@@ -962,15 +983,36 @@ class MultiDayCalendarCard extends HTMLElement {
       accumulatedOriginScrollLeft = 0;
       accumulatedOriginScrollTop = 0;
     };
+    const refreshGeometryAfterHeaderUpdate = (): void => {
+      const currentPoint = scrollGeometry
+        ? rawScrollToCalendarPoint({ left: viewport.scrollLeft, top: viewport.scrollTop }, scrollGeometry)
+        : calendarOrigin;
+      this.updateHeaderForViewport(viewport);
+      const geometry = measureScrollGeometry();
+      if (!geometry) return;
+      scrollGeometry = geometry;
+      startLeft = geometry.originRawScroll.left;
+      startTop = geometry.originRawScroll.top;
+      const target = calendarPointToRawScroll(currentPoint, geometry);
+      if (horizontal) viewport.scrollLeft = target.left;
+      if (vertical) viewport.scrollTop = target.top;
+    };
+    const resetLookAround = (): void => {
+      if (!scrollGeometry) return;
+      const target = calendarPointToRawScroll(calendarOrigin, scrollGeometry);
+      this.animateLookAroundScroll(viewport, target.left, target.top, () => {
+        viewport.dispatchEvent(new Event('look-around-reset'));
+      });
+    };
     const cancelAnimation = (): void => {
       if (this._lookAroundAnimating) this.cancelLookAroundReset();
     };
     let lastTouchX: number | undefined;
     let lastTouchY: number | undefined;
     viewport.addEventListener('look-around-reset', () => {
-      hideRecenterButton();
       this._lookAroundScrollInProgress = false;
-      this.updateHeaderForViewport(viewport);
+      refreshGeometryAfterHeaderUpdate();
+      hideRecenterButton();
       this.querySelector<HTMLElement>('.time-axis-bottom-fade')?.classList.remove('is-active');
       originLocked = true;
       accumulatedOriginScrollLeft = 0;
@@ -980,7 +1022,7 @@ class MultiDayCalendarCard extends HTMLElement {
       event.preventDefault();
       event.stopPropagation();
       this.cancelLookAroundReset();
-      this.resetLookAround();
+      resetLookAround();
     });
     viewport.addEventListener('wheel', (event) => {
       cancelAnimation();
@@ -1027,10 +1069,13 @@ class MultiDayCalendarCard extends HTMLElement {
       if (initialized || this._lookAroundAnimating) this._lookAroundScrollInProgress = true;
       void this.loadEvents(false, this.viewportDays(viewport));
       if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis')) timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
-      setTimeAxisBottomFadeActive(Math.abs(viewport.scrollTop - startTop) > 1);
+      const calendarPoint = scrollGeometry
+        ? rawScrollToCalendarPoint({ left: viewport.scrollLeft, top: viewport.scrollTop }, scrollGeometry)
+        : calendarOrigin;
+      setTimeAxisBottomFadeActive(vertical && scrollGeometry !== undefined &&
+        Math.abs(calendarPoint.y) > 1 / scrollGeometry.pixelsPerMinute);
       if (!initialized || this._lookAroundAnimating) return;
-      if ((!horizontal || Math.abs(viewport.scrollLeft - startLeft) <= 1) &&
-          (!vertical || Math.abs(viewport.scrollTop - startTop) <= 1)) hideRecenterButton();
+      if (isAtCalendarOrigin()) hideRecenterButton();
       else showRecenterButton();
       if (this._lookAroundScrollEndTimerId !== undefined) clearTimeout(this._lookAroundScrollEndTimerId);
       this._lookAroundScrollEndTimerId = window.setTimeout(settle, 120);
@@ -1085,11 +1130,12 @@ class MultiDayCalendarCard extends HTMLElement {
     });
 
     const days = visibleDays(range.start, config.days, config.skip_days);
-    const lookAroundAnchorDay = days[0];
+    /** The requested start date may be skipped; this is the first day actually displayed. */
+    const displayStartDay = days[0];
     const lookAroundDays = horizontalLookAround
       ? [
-        ...visibleDaysBefore(lookAroundAnchorDay, LOOK_AROUND_BUFFER_DAYS, config.skip_days),
-        ...visibleDays(lookAroundAnchorDay, LOOK_AROUND_BUFFER_DAYS * 2 + config.days, config.skip_days),
+        ...visibleDaysBefore(displayStartDay, LOOK_AROUND_BUFFER_DAYS, config.skip_days),
+        ...visibleDays(displayStartDay, LOOK_AROUND_BUFFER_DAYS * 2 + config.days, config.skip_days),
       ]
       : days;
     const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);

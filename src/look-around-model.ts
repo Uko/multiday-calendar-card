@@ -1,3 +1,35 @@
+export type CalendarScrollPoint = {
+  /** Continuous displayed-day distance from the first visible, non-skipped day. */
+  x: number;
+  /** Continuous minute distance from the configured start time. */
+  y: number;
+};
+
+export type RawScrollPoint = { left: number; top: number };
+
+/** Geometry that maps the semantic display-start origin onto the native scrollport. */
+export type CalendarScrollGeometry = {
+  originRawScroll: RawScrollPoint;
+  dayWidthPx: number;
+  pixelsPerMinute: number;
+};
+
+/** Convert the browser's native scroll coordinates into semantic calendar coordinates. */
+export function rawScrollToCalendarPoint(raw: RawScrollPoint, geometry: CalendarScrollGeometry): CalendarScrollPoint {
+  return {
+    x: (raw.left - geometry.originRawScroll.left) / geometry.dayWidthPx,
+    y: (raw.top - geometry.originRawScroll.top) / geometry.pixelsPerMinute,
+  };
+}
+
+/** Convert semantic calendar coordinates into the browser's native scroll coordinates. */
+export function calendarPointToRawScroll(point: CalendarScrollPoint, geometry: CalendarScrollGeometry): RawScrollPoint {
+  return {
+    left: geometry.originRawScroll.left + point.x * geometry.dayWidthPx,
+    top: geometry.originRawScroll.top + point.y * geometry.pixelsPerMinute,
+  };
+}
+
 export const LOOK_AROUND_RESET_DELAY_MS = 30_000;
 /** Snap to the configured start position only when resting within this distance. */
 export const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
