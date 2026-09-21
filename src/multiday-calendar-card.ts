@@ -998,14 +998,13 @@ class MultiDayCalendarCard extends HTMLElement {
       accumulatedOriginScrollLeft = 0;
       accumulatedOriginScrollTop = 0;
     };
-    const refreshGeometryAfterHeaderUpdate = (): void => {
-      const rawBeforeHeaderUpdate = { left: viewport.scrollLeft, top: viewport.scrollTop };
+    const rebaseForGeometryChange = (): void => {
+      const rawBeforeGeometryChange = { left: viewport.scrollLeft, top: viewport.scrollTop };
       const previousGeometry = scrollGeometry;
-      this.updateHeaderForViewport(viewport);
       const geometry = measureScrollGeometry();
       if (!geometry) return;
       const target = previousGeometry
-        ? rebaseRawScrollForGeometry(rawBeforeHeaderUpdate, previousGeometry, geometry)
+        ? rebaseRawScrollForGeometry(rawBeforeGeometryChange, previousGeometry, geometry)
         : calendarPointToRawScroll(calendarOrigin, geometry);
       scrollGeometry = geometry;
       startLeft = geometry.originRawScroll.left;
@@ -1013,11 +1012,15 @@ class MultiDayCalendarCard extends HTMLElement {
       if (horizontal) viewport.scrollLeft = target.left;
       if (vertical) viewport.scrollTop = target.top;
     };
+    const refreshGeometryAfterHeaderUpdate = (): void => {
+      this.updateHeaderForViewport(viewport);
+      rebaseForGeometryChange();
+    };
     const scheduleGeometryRefresh = (): void => {
       if (this._lookAroundGeometryAnimationFrameId !== undefined) return;
       this._lookAroundGeometryAnimationFrameId = requestAnimationFrame(() => {
         this._lookAroundGeometryAnimationFrameId = undefined;
-        if (this._lookAroundInitialized && !this._lookAroundAnimating) refreshGeometryAfterHeaderUpdate();
+        if (this._lookAroundInitialized && !this._lookAroundAnimating) rebaseForGeometryChange();
       });
     };
     this._lookAroundHeaderResizeObserver?.disconnect();
