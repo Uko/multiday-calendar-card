@@ -33,22 +33,30 @@ test('now-line position tracks the current minute without re-rendering events', 
   assert.equal(nowLineTopPercent(today, new Date(2026, 8, 8, 22, 0), 6 * 60, 22 * 60), undefined);
 });
 
-test('onNewStartDate updates the active day only when the local calendar day changes', () => {
+test('advanceStartDay rebuilds the calendar only when the local date changes', () => {
   const CalendarCard = elementRegistry.get('multiday-calendar-card');
   assert.ok(CalendarCard);
 
   const card = new CalendarCard() as FakeHTMLElement & {
-    onNewStartDate(date: Date): boolean;
+    advanceStartDay(date: Date): boolean;
+    render(): void;
+    _config: unknown;
     _lookAroundInitialized: boolean;
   };
+  let renderCount = 0;
+  card.render = () => { renderCount += 1; };
+  card._config = {};
 
   card._lookAroundInitialized = true;
-  assert.equal(card.onNewStartDate(new Date(2026, 8, 8, 10, 15)), true);
+  assert.equal(card.advanceStartDay(new Date(2026, 8, 8, 10, 15)), true);
+  assert.equal(renderCount, 1);
   assert.equal(card._lookAroundInitialized, false);
   card._lookAroundInitialized = true;
-  assert.equal(card.onNewStartDate(new Date(2026, 8, 8, 23, 59)), false);
+  assert.equal(card.advanceStartDay(new Date(2026, 8, 8, 23, 59)), false);
+  assert.equal(renderCount, 1);
   assert.equal(card._lookAroundInitialized, true);
-  assert.equal(card.onNewStartDate(new Date(2026, 8, 9, 0, 0)), true);
+  assert.equal(card.advanceStartDay(new Date(2026, 8, 9, 0, 0)), true);
+  assert.equal(renderCount, 2);
   assert.equal(card._lookAroundInitialized, false);
 });
 

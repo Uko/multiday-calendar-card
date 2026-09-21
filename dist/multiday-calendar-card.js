@@ -1067,7 +1067,7 @@ class MultiDayCalendarCard extends HTMLElement {
         this._dayHeaderAnimationReady = false;
         this.handleConnectionReady = () => {
             if (this.isConnected) {
-                this.onNewStartDate(this.resolveStartDay());
+                this.advanceStartDay(this.resolveStartDay());
                 void this.loadEvents(true);
             }
         };
@@ -1075,7 +1075,7 @@ class MultiDayCalendarCard extends HTMLElement {
             if (document.visibilityState !== 'visible')
                 return;
             this.updateNowLine();
-            const startDayChanged = this.onNewStartDate(this.resolveStartDay());
+            const startDayChanged = this.advanceStartDay(this.resolveStartDay());
             if (startDayChanged || shouldRefreshAfterVisibility(Date.now(), this._lastEventsUpdateMs)) {
                 void this.loadEvents(true);
             }
@@ -1186,7 +1186,7 @@ class MultiDayCalendarCard extends HTMLElement {
         const receivedInitialHass = this._hass === undefined;
         this._hass = hass;
         this.watchConnection(hass.connection);
-        const startDayChanged = this.onNewStartDate(this.resolveStartDay());
+        const startDayChanged = this.advanceStartDay(this.resolveStartDay());
         if (receivedInitialHass)
             void this.loadEvents(this._error !== undefined);
         else if (this._config?.start_day_entity && startDayChanged)
@@ -1196,8 +1196,8 @@ class MultiDayCalendarCard extends HTMLElement {
         return 8;
     }
     connectedCallback() {
-        this.onNewStartDate(this.resolveStartDay());
-        this.render();
+        if (!this.advanceStartDay(this.resolveStartDay()))
+            this.render();
         this.watchConnection(this._hass?.connection);
         void this.loadEvents();
         this.startRefreshTimer();
@@ -1251,7 +1251,7 @@ class MultiDayCalendarCard extends HTMLElement {
         nextMidnight.setHours(24, 0, 0, 50);
         this._dayRolloverTimerId = window.setTimeout(() => {
             this._dayRolloverTimerId = undefined;
-            if (this.isConnected && this.onNewStartDate(new Date()))
+            if (this.isConnected && this.advanceStartDay(new Date()))
                 void this.loadEvents(true);
             if (this.isConnected)
                 this.startDayRolloverTimer();
@@ -1327,6 +1327,15 @@ class MultiDayCalendarCard extends HTMLElement {
         this._dayHeaderHeight = undefined;
         this._dayHeaderAnimationReady = false;
         this.invalidateEventCache();
+        return true;
+    }
+    /** Rebuild date columns when the active local date changes, including virtual look-around strips. */
+    advanceStartDay(date) {
+        if (!this._config)
+            return false;
+        if (!this.onNewStartDate(date))
+            return false;
+        this.render();
         return true;
     }
     invalidateEventCache() {
