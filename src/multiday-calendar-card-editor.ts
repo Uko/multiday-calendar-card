@@ -85,6 +85,7 @@ function lookAroundSchema(mode: LookAroundSettings['mode']): unknown[] {
       name: 'mode',
       selector: {
         select: {
+          mode: 'dropdown',
           options: [
             { value: 'none', label: 'None' },
             { value: 'horizontal', label: 'Horizontal' },
@@ -184,7 +185,10 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     let element: HTMLElement | null = this;
     while (element) {
       positions.push({ element, left: element.scrollLeft, top: element.scrollTop });
-      element = element.parentElement;
+      const root = element.getRootNode();
+      element = element.parentElement ?? (
+        root instanceof ShadowRoot && root.host instanceof HTMLElement ? root.host : null
+      );
     }
     this._pendingScrollPositions = positions;
   }
@@ -196,11 +200,15 @@ export class MultidayCalendarCardEditor extends HTMLElement {
       element.scrollLeft = left;
       element.scrollTop = top;
     });
+    const restoreAfterLayout = (remainingFrames: number): void => {
+      requestAnimationFrame(() => {
+        restore();
+        if (remainingFrames > 0) restoreAfterLayout(remainingFrames - 1);
+        else if (this._pendingScrollPositions === positions) this._pendingScrollPositions = undefined;
+      });
+    };
     restore();
-    requestAnimationFrame(() => {
-      restore();
-      if (this._pendingScrollPositions === positions) this._pendingScrollPositions = undefined;
-    });
+    restoreAfterLayout(2);
   }
 
   private assignHassToEntityPickers(): void {
@@ -274,7 +282,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     };
     editor.schema = lookAroundSchema(settings.mode);
     editor.computeLabel = (schema) => ({
-      mode: 'Look around',
+      mode: '',
       origin_snap_enabled: 'Snap to origin',
       automatic_recenter_enabled: 'Automatically re-center',
     })[schema.name] ?? schema.name;
