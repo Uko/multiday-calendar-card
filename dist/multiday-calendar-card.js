@@ -926,19 +926,26 @@ class MultidayCalendarCardEditor extends HTMLElement {
         if (!target)
             return;
         const settings = normalizeLookAroundSettings(this._config.look_around);
-        const modeSelector = document.createElement('ha-button-toggle-group');
-        modeSelector.buttons = [
-            { value: 'none', label: 'None' },
-            { value: 'horizontal', label: 'Horizontal' },
-            { value: 'vertical', label: 'Vertical' },
-            { value: 'full', label: 'Full' },
-        ];
-        modeSelector.active = settings.mode;
-        modeSelector.fullWidth = true;
-        modeSelector.addEventListener('value-changed', (event) => {
-            const mode = event.detail.value;
-            if (mode !== undefined && mode !== settings.mode)
-                this.updateLookAround({ mode }, true);
+        const modeSelector = document.createElement('div');
+        modeSelector.className = 'look-around-mode-group';
+        modeSelector.setAttribute('role', 'group');
+        modeSelector.setAttribute('aria-label', 'Look around mode');
+        [
+            ['none', 'None'],
+            ['horizontal', 'Horizontal'],
+            ['vertical', 'Vertical'],
+            ['full', 'Full'],
+        ].forEach(([mode, label]) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'look-around-mode';
+            button.textContent = label;
+            button.setAttribute('aria-pressed', String(mode === settings.mode));
+            button.addEventListener('click', () => {
+                if (mode !== settings.mode)
+                    this.updateLookAround({ mode }, true);
+            });
+            modeSelector.append(button);
         });
         target.replaceChildren(modeSelector);
         if (settings.mode === 'none')
@@ -1009,6 +1016,12 @@ class MultidayCalendarCardEditor extends HTMLElement {
         .day-toggle-group { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
         .day-toggle { min-height: 38px; padding: 6px; border-color: var(--divider-color); color: var(--primary-text-color); }
         .day-toggle[aria-pressed="true"] { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); color: var(--primary-color); font-weight: 600; }
+        .look-around-mode-group { display: flex; margin: 8px 0 12px; }
+        .look-around-mode { flex: 1; min-width: 0; border-color: var(--divider-color); border-radius: 0; color: var(--primary-text-color); }
+        .look-around-mode:first-child { border-radius: 4px 0 0 4px; }
+        .look-around-mode:last-child { border-radius: 0 4px 4px 0; }
+        .look-around-mode + .look-around-mode { margin-left: -1px; }
+        .look-around-mode[aria-pressed="true"] { position: relative; z-index: 1; border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); color: var(--primary-color); font-weight: 600; }
         .hint, .validation { margin: 8px 0 0; font-size: 0.875rem; color: var(--secondary-text-color); }
         .error { color: var(--error-color); margin: 4px 0; }
         .warning { color: var(--warning-color, #b26a00); margin: 4px 0; }
