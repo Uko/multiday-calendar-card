@@ -34,6 +34,12 @@ type NativeForm = HTMLElement & {
   computeLabel?: (schema: { name: string }) => string;
 };
 
+type ButtonToggleGroup = HTMLElement & {
+  buttons?: Array<{ value: string; label: string }>;
+  active?: string;
+  fullWidth?: boolean;
+};
+
 type ScrollPosition = { element: HTMLElement; left: number; top: number };
 
 const CARD_TYPE = 'custom:multiday-calendar-card';
@@ -80,25 +86,9 @@ function interactionSchema(showMoreInfo: boolean, showLocationMap: boolean, prov
 }
 
 function lookAroundSchema(mode: LookAroundSettings['mode']): unknown[] {
-  return [
-    {
-      name: 'mode',
-      selector: {
-        select: {
-          mode: 'dropdown',
-          options: [
-            { value: 'none', label: 'None' },
-            { value: 'horizontal', label: 'Horizontal' },
-            { value: 'vertical', label: 'Vertical' },
-            { value: 'full', label: 'Full' },
-          ],
-        },
-      },
-    },
-    ...(mode === 'none' ? [] : [
-      { name: 'origin_snap_enabled', selector: { boolean: {} } },
-      { name: 'automatic_recenter_enabled', selector: { boolean: {} } },
-    ]),
+  return mode === 'none' ? [] : [
+    { name: 'origin_snap_enabled', selector: { boolean: {} } },
+    { name: 'automatic_recenter_enabled', selector: { boolean: {} } },
   ];
 }
 
@@ -273,37 +263,48 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     const target = this.querySelector<HTMLElement>('[data-look-around-editor]');
     if (!target) return;
     const settings = normalizeLookAroundSettings(this._config.look_around);
+    const modeSelector = document.createElement('ha-button-toggle-group') as ButtonToggleGroup;
+    modeSelector.buttons = [
+      { value: 'none', label: 'None' },
+      { value: 'horizontal', label: 'Horizontal' },
+      { value: 'vertical', label: 'Vertical' },
+      { value: 'full', label: 'Full' },
+    ];
+    modeSelector.active = settings.mode;
+    modeSelector.fullWidth = true;
+    modeSelector.addEventListener('value-changed', (event) => {
+      const mode = (event as CustomEvent<{ value?: LookAroundSettings['mode'] }>).detail.value;
+      if (mode !== undefined && mode !== settings.mode) this.updateLookAround({ mode }, true);
+    });
+    target.replaceChildren(modeSelector);
+    if (settings.mode === 'none') return;
+
     const editor = document.createElement('ha-form') as NativeForm;
     editor.hass = this._hass;
     editor.data = {
-      mode: settings.mode,
       origin_snap_enabled: settings.origin_snap_distance > 0,
       automatic_recenter_enabled: settings.automatic_recenter > 0,
     };
     editor.schema = lookAroundSchema(settings.mode);
     editor.computeLabel = (schema) => ({
-      mode: '',
       origin_snap_enabled: 'Snap to origin',
       automatic_recenter_enabled: 'Automatically re-center',
     })[schema.name] ?? schema.name;
     editor.addEventListener('value-changed', (event) => {
       const value = (event as CustomEvent<{ value: {
-        mode?: LookAroundSettings['mode'];
         origin_snap_enabled?: boolean;
         automatic_recenter_enabled?: boolean;
       } }>).detail.value;
-      const modeChanged = value.mode !== undefined && value.mode !== settings.mode;
       this.updateLookAround({
-        mode: value.mode ?? settings.mode,
         origin_snap_distance: value.origin_snap_enabled === undefined
           ? settings.origin_snap_distance
           : value.origin_snap_enabled ? LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX : 0,
         automatic_recenter: value.automatic_recenter_enabled === undefined
           ? settings.automatic_recenter
           : value.automatic_recenter_enabled ? LOOK_AROUND_RESET_DELAY_MS / 1_000 : 0,
-      }, modeChanged);
+      });
     });
-    target.replaceChildren(editor);
+    target.append(editor);
   }
 
   private updateValidation(): void {

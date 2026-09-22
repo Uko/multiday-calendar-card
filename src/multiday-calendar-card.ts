@@ -366,6 +366,10 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   connectedCallback(): void {
+    // Dashboard edit mode can detach and reattach an unchanged card after its available
+    // width changes. Raw native scroll offsets no longer map to the same calendar day,
+    // so treat a new attachment as a fresh view and establish the configured origin.
+    this._lookAroundInitialized = false;
     if (!this.advanceStartDay(this.resolveStartDay())) this.render();
     this.watchConnection(this._hass?.connection);
     void this.loadEvents();

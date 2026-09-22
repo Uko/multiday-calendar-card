@@ -20,6 +20,10 @@ Object.assign(globalThis, {
     },
   },
   window: { customCards: [] },
+  document: {
+    addEventListener(): void {},
+    removeEventListener(): void {},
+  },
 });
 
 const calendarCardModule = await import('../src/multiday-calendar-card');
@@ -58,6 +62,37 @@ test('advanceStartDay rebuilds the calendar only when the local date changes', (
   assert.equal(card.advanceStartDay(new Date(2026, 8, 9, 0, 0)), true);
   assert.equal(renderCount, 2);
   assert.equal(card._lookAroundInitialized, false);
+});
+
+test('reattaching the card resets look-around before dashboard edit-mode rendering', () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  const card = new CalendarCard() as FakeHTMLElement & {
+    connectedCallback(): void;
+    _lookAroundInitialized: boolean;
+    advanceStartDay(date: Date): boolean;
+    render(): void;
+    watchConnection(): void;
+    loadEvents(): Promise<void>;
+    startRefreshTimer(): void;
+    startClockTimer(): void;
+    startDayRolloverTimer(): void;
+  };
+  let renderCount = 0;
+  card._lookAroundInitialized = true;
+  card.advanceStartDay = () => false;
+  card.render = () => { renderCount += 1; };
+  card.watchConnection = () => undefined;
+  card.loadEvents = async () => undefined;
+  card.startRefreshTimer = () => undefined;
+  card.startClockTimer = () => undefined;
+  card.startDayRolloverTimer = () => undefined;
+
+  card.connectedCallback();
+
+  assert.equal(card._lookAroundInitialized, false);
+  assert.equal(renderCount, 1);
 });
 
 test('configured start_day_entity reloads only when its calendar date changes', () => {
