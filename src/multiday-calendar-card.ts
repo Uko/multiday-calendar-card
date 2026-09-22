@@ -18,7 +18,6 @@ import {
   startDayForEntityState,
   timelineGeometry,
   visibleDays,
-  visibleDaysBefore,
   type CalendarApiEvent,
   type DayName,
 } from './calendar-model';
@@ -29,6 +28,7 @@ import {
   calendarPointToRawScroll,
   hasHorizontalLookAround,
   hasVerticalLookAround,
+  lookAroundVisibleDays,
   lookAroundVerticalRange,
   normalizeLookAroundSettings,
   rawScrollToCalendarPoint,
@@ -1216,10 +1216,7 @@ class MultiDayCalendarCard extends HTMLElement {
     /** The requested start date may be skipped; this is the first day actually displayed. */
     const displayStartDay = days[0];
     const lookAroundDays = horizontalLookAround
-      ? [
-        ...visibleDaysBefore(displayStartDay, LOOK_AROUND_BUFFER_DAYS, config.skip_days),
-        ...visibleDays(displayStartDay, LOOK_AROUND_BUFFER_DAYS * 2 + config.days, config.skip_days),
-      ]
+      ? lookAroundVisibleDays(displayStartDay, config.days, config.skip_days)
       : days;
     const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
     const dayHeaderHeight = calendarHeaderHeight(

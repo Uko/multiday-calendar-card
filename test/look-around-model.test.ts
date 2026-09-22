@@ -8,6 +8,7 @@ import {
   LOOK_AROUND_VERTICAL_BUFFER_MINUTES,
   hasHorizontalLookAround,
   hasVerticalLookAround,
+  lookAroundVisibleDays,
   lookAroundVerticalRange,
   normalizeLookAroundMode,
   normalizeLookAroundSettings,
@@ -24,6 +25,15 @@ test('look-around waits 30 seconds after horizontal scrolling before returning t
 
 test('look-around keeps a large fixed virtual date buffer around the configured start day', () => {
   assert.equal(LOOK_AROUND_BUFFER_DAYS, 90);
+});
+
+test('horizontal look-around renders one buffer before and after the active window', () => {
+  const dates = lookAroundVisibleDays(new Date(2026, 0, 1), 2);
+
+  assert.equal(dates.length, 182);
+  assert.deepEqual(dates[89], new Date(2025, 11, 31));
+  assert.deepEqual(dates[90], new Date(2026, 0, 1));
+  assert.deepEqual(dates.at(-1), new Date(2026, 3, 2));
 });
 
 test('calendar and raw scroll coordinates are exact inverses around the display-start origin', () => {

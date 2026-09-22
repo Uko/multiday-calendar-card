@@ -1,3 +1,5 @@
+import { visibleDays, visibleDaysBefore, type DayName } from './calendar-model';
+
 export type CalendarScrollPoint = {
   /** Continuous displayed-day distance from the first visible, non-skipped day. */
   x: number;
@@ -46,6 +48,18 @@ export const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
 export const LOOK_AROUND_BUFFER_DAYS = 90;
 /** Minutes rendered before and after the configured daily time range. */
 export const LOOK_AROUND_VERTICAL_BUFFER_MINUTES = 2 * 60;
+
+/** Return the active dates with one fixed rendered buffer before and after them. */
+export function lookAroundVisibleDays(
+  displayStartDay: Date,
+  activeDays: number,
+  skipDays: readonly DayName[] = [],
+): Date[] {
+  return [
+    ...visibleDaysBefore(displayStartDay, LOOK_AROUND_BUFFER_DAYS, skipDays),
+    ...visibleDays(displayStartDay, LOOK_AROUND_BUFFER_DAYS + activeDays, skipDays),
+  ];
+}
 
 export const LOOK_AROUND_MODES = ['full', 'horizontal', 'vertical', 'none'] as const;
 export type LookAroundMode = typeof LOOK_AROUND_MODES[number];
