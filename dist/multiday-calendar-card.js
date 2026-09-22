@@ -764,12 +764,6 @@ function interactionSchema(showMoreInfo, showLocationMap, provider) {
     ];
     return schema;
 }
-function lookAroundSchema(mode) {
-    return mode === 'none' ? [] : [
-        { name: 'origin_snap_enabled', selector: { boolean: {} } },
-        { name: 'automatic_recenter_enabled', selector: { boolean: {} } },
-    ];
-}
 function escapeHtml$1(value) {
     return value.replace(/[&<>'"]/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -950,29 +944,27 @@ class MultidayCalendarCardEditor extends HTMLElement {
         target.replaceChildren(modeSelector);
         if (settings.mode === 'none')
             return;
-        const editor = document.createElement('ha-form');
-        editor.hass = this._hass;
-        editor.data = {
-            origin_snap_enabled: settings.origin_snap_distance > 0,
-            automatic_recenter_enabled: settings.automatic_recenter > 0,
-        };
-        editor.schema = lookAroundSchema(settings.mode);
-        editor.computeLabel = (schema) => ({
-            origin_snap_enabled: 'Snap to origin',
-            automatic_recenter_enabled: 'Automatically re-center',
-        })[schema.name] ?? schema.name;
-        editor.addEventListener('value-changed', (event) => {
-            const value = event.detail.value;
-            this.updateLookAround({
-                origin_snap_distance: value.origin_snap_enabled === undefined
-                    ? settings.origin_snap_distance
-                    : value.origin_snap_enabled ? LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX : 0,
-                automatic_recenter: value.automatic_recenter_enabled === undefined
-                    ? settings.automatic_recenter
-                    : value.automatic_recenter_enabled ? LOOK_AROUND_RESET_DELAY_MS / 1_000 : 0,
+        [
+            ['origin_snap_enabled', 'Snap to origin', settings.origin_snap_distance > 0],
+            ['automatic_recenter_enabled', 'Automatically re-center', settings.automatic_recenter > 0],
+        ].forEach(([name, label, enabled]) => {
+            // ha-form reserves a 24px inter-field margin. One native form per toggle keeps
+            // Home Assistant's switch control while avoiding a misleading gap between them.
+            const editor = document.createElement('ha-form');
+            editor.hass = this._hass;
+            editor.data = { [name]: enabled };
+            editor.schema = [{ name, selector: { boolean: {} } }];
+            editor.computeLabel = () => label;
+            editor.addEventListener('value-changed', (event) => {
+                const value = event.detail.value[name];
+                if (value === undefined)
+                    return;
+                this.updateLookAround(name === 'origin_snap_enabled'
+                    ? { origin_snap_distance: value ? LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX : 0 }
+                    : { automatic_recenter: value ? LOOK_AROUND_RESET_DELAY_MS / 1_000 : 0 });
             });
+            target.append(editor);
         });
-        target.append(editor);
     }
     updateValidation() {
         const errors = validateEditorConfig(this._config);
