@@ -26,7 +26,6 @@ import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
 import { parseTime } from './editor-model';
 import {
   LOOK_AROUND_BUFFER_DAYS,
-  LOOK_AROUND_VERTICAL_BUFFER_MINUTES,
   calendarPointToRawScroll,
   hasHorizontalLookAround,
   hasVerticalLookAround,
@@ -1080,7 +1079,7 @@ class MultiDayCalendarCard extends HTMLElement {
     viewport.addEventListener('wheel', (event) => {
       cancelAnimation();
       if (!originLocked) return;
-      const deltaLeft = horizontal ? event.deltaX || (event.shiftKey ? event.deltaY : 0) : 0;
+      const deltaLeft = horizontal ? event.deltaX : 0;
       const deltaTop = vertical && !event.shiftKey ? event.deltaY : 0;
       if (deltaLeft === 0 && deltaTop === 0) return;
       event.preventDefault();

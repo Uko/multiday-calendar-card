@@ -2034,7 +2034,7 @@ class MultiDayCalendarCard extends HTMLElement {
             cancelAnimation();
             if (!originLocked)
                 return;
-            const deltaLeft = horizontal ? event.deltaX || (event.shiftKey ? event.deltaY : 0) : 0;
+            const deltaLeft = horizontal ? event.deltaX : 0;
             const deltaTop = vertical && !event.shiftKey ? event.deltaY : 0;
             if (deltaLeft === 0 && deltaTop === 0)
                 return;
