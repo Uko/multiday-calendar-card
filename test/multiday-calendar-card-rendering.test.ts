@@ -255,3 +255,57 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
   assert.equal(requests.length, 2);
   assert.deepEqual(loadingTransitions, [true, false, true, false]);
 });
+
+test('an invalidated request cannot clear a replacement request loading ownership', async () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  let resolveFirstRequest!: (events: []) => void;
+  let resolveSecondRequest!: (events: []) => void;
+  const firstRequest = new Promise<[]>((resolve) => { resolveFirstRequest = resolve; });
+  const secondRequest = new Promise<[]>((resolve) => { resolveSecondRequest = resolve; });
+  let requestCount = 0;
+  const card = new CalendarCard() as FakeHTMLElement & {
+    setConfig(config: { type: string; calendars: Array<{ entity: string }>; days: number }): void;
+    render(): void;
+    loadEvents(force?: boolean, days?: readonly Date[]): Promise<void>;
+    invalidateEventCache(): void;
+    updateLoadingIndicator(): void;
+    updateLoadedDayColumns(dayKeys: readonly string[]): void;
+    _activeStartDay: Date;
+    _hass: { callApi<T>(method: string, path: string): Promise<T> };
+    _loadingDays: Set<string>;
+    _loading: boolean;
+  };
+  card.render = () => undefined;
+  card.setConfig({
+    type: 'custom:multiday-calendar-card',
+    calendars: [{ entity: 'calendar.work' }],
+    days: 1,
+  });
+  card._activeStartDay = new Date(2026, 0, 1);
+  card.updateLoadingIndicator = () => undefined;
+  card.updateLoadedDayColumns = () => undefined;
+  card._hass = {
+    callApi: <T>() => {
+      requestCount += 1;
+      return (requestCount === 1 ? firstRequest : secondRequest) as Promise<T>;
+    },
+  };
+
+  const day = new Date(2026, 0, 1);
+  const staleLoad = card.loadEvents(false, [day]);
+  card.invalidateEventCache();
+  const currentLoad = card.loadEvents(false, [day]);
+
+  resolveFirstRequest([]);
+  await staleLoad;
+
+  assert.equal(card._loadingDays.has('2026-0-1'), true);
+  assert.equal(card._loading, true);
+
+  resolveSecondRequest([]);
+  await currentLoad;
+  assert.equal(card._loadingDays.has('2026-0-1'), false);
+  assert.equal(card._loading, false);
+});

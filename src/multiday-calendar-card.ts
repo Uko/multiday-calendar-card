@@ -607,10 +607,13 @@ class MultiDayCalendarCard extends HTMLElement {
       this._error = error instanceof Error ? error.message : 'Unable to load calendar events';
       this.scheduleRecoveryRefresh();
     } finally {
+      // Cache invalidation releases the old request's ownership. It must not clear the
+      // marker (or loading state) claimed by a replacement request for the same day.
+      if (generation !== this._eventCacheGeneration) return;
       requestedKeys.forEach((key) => this._loadingDays.delete(key));
       this._loading = this._loadingDays.size > 0;
       this.updateLoadingIndicator();
-      if (generation === this._eventCacheGeneration) this.updateLoadedDayColumns(requestedKeys);
+      this.updateLoadedDayColumns(requestedKeys);
     }
   }
 
