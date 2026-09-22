@@ -764,6 +764,27 @@ function interactionSchema(showMoreInfo, showLocationMap, provider) {
     ];
     return schema;
 }
+function lookAroundSchema(mode) {
+    return [
+        {
+            name: 'mode',
+            selector: {
+                select: {
+                    options: [
+                        { value: 'none', label: 'None' },
+                        { value: 'horizontal', label: 'Horizontal' },
+                        { value: 'vertical', label: 'Vertical' },
+                        { value: 'full', label: 'Full' },
+                    ],
+                },
+            },
+        },
+        ...(mode === 'none' ? [] : [
+            { name: 'origin_snap_enabled', selector: { boolean: {} } },
+            { name: 'automatic_recenter_enabled', selector: { boolean: {} } },
+        ]),
+    ];
+}
 function escapeHtml$1(value) {
     return value.replace(/[&<>'"]/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -805,16 +826,22 @@ class MultidayCalendarCardEditor extends HTMLElement {
         this._hass = hass;
         this.assignHassToEntityPickers();
         this.renderInteractionEditor();
+        this.renderLookAroundEditor();
     }
     updateConfig(update, rerender = false) {
+        this.captureScrollPositions();
         this._config = normalizeEditorConfig({ ...this._config, ...update });
         this.updateValidation();
-        if (validateEditorConfig(this._config).length === 0) {
+        const valid = validateEditorConfig(this._config).length === 0;
+        if (valid) {
             this.dispatchEvent(new CustomEvent('config-changed', {
                 bubbles: true,
                 composed: true,
                 detail: { config: this._config },
             }));
+        }
+        else if (!rerender) {
+            this._pendingScrollPositions = undefined;
         }
         if (rerender)
             this.render();
@@ -823,10 +850,36 @@ class MultidayCalendarCardEditor extends HTMLElement {
         const calendars = (this._config.calendars ?? []).map((calendar, row) => row === index ? { ...calendar, ...update } : calendar);
         this.updateConfig({ calendars });
     }
-    updateLookAround(update) {
+    updateLookAround(update, rerender = false) {
         this.updateConfig({
             look_around: { ...normalizeLookAroundSettings(this._config.look_around), ...update },
-        }, true);
+        }, rerender);
+    }
+    captureScrollPositions() {
+        if (this._pendingScrollPositions)
+            return;
+        const positions = [];
+        let element = this;
+        while (element) {
+            positions.push({ element, left: element.scrollLeft, top: element.scrollTop });
+            element = element.parentElement;
+        }
+        this._pendingScrollPositions = positions;
+    }
+    restoreScrollPositions() {
+        const positions = this._pendingScrollPositions;
+        if (!positions)
+            return;
+        const restore = () => positions.forEach(({ element, left, top }) => {
+            element.scrollLeft = left;
+            element.scrollTop = top;
+        });
+        restore();
+        requestAnimationFrame(() => {
+            restore();
+            if (this._pendingScrollPositions === positions)
+                this._pendingScrollPositions = undefined;
+        });
     }
     assignHassToEntityPickers() {
         this.querySelectorAll('.calendar-row ha-entity-picker').forEach((picker) => {
@@ -877,6 +930,39 @@ class MultidayCalendarCardEditor extends HTMLElement {
         });
         target.replaceChildren(editor);
     }
+    renderLookAroundEditor() {
+        const target = this.querySelector('[data-look-around-editor]');
+        if (!target)
+            return;
+        const settings = normalizeLookAroundSettings(this._config.look_around);
+        const editor = document.createElement('ha-form');
+        editor.hass = this._hass;
+        editor.data = {
+            mode: settings.mode,
+            origin_snap_enabled: settings.origin_snap_distance > 0,
+            automatic_recenter_enabled: settings.automatic_recenter > 0,
+        };
+        editor.schema = lookAroundSchema(settings.mode);
+        editor.computeLabel = (schema) => ({
+            mode: 'Look around',
+            origin_snap_enabled: 'Snap to origin',
+            automatic_recenter_enabled: 'Automatically re-center',
+        })[schema.name] ?? schema.name;
+        editor.addEventListener('value-changed', (event) => {
+            const value = event.detail.value;
+            const modeChanged = value.mode !== undefined && value.mode !== settings.mode;
+            this.updateLookAround({
+                mode: value.mode ?? settings.mode,
+                origin_snap_distance: value.origin_snap_enabled === undefined
+                    ? settings.origin_snap_distance
+                    : value.origin_snap_enabled ? LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX : 0,
+                automatic_recenter: value.automatic_recenter_enabled === undefined
+                    ? settings.automatic_recenter
+                    : value.automatic_recenter_enabled ? LOOK_AROUND_RESET_DELAY_MS / 1_000 : 0,
+            }, modeChanged);
+        });
+        target.replaceChildren(editor);
+    }
     updateValidation() {
         const errors = validateEditorConfig(this._config);
         const warnings = editorWarnings(this._config);
@@ -894,8 +980,6 @@ class MultidayCalendarCardEditor extends HTMLElement {
         const fixedHeight = config.height !== undefined && config.height !== null;
         const startTime = config.start_time ?? '06:00';
         const endTime = config.end_time ?? '22:00';
-        const lookAround = normalizeLookAroundSettings(config.look_around);
-        const lookAroundDisabled = lookAround.mode === 'none';
         this.innerHTML = `
       <style>
         :host { display: block; }
@@ -918,7 +1002,6 @@ class MultidayCalendarCardEditor extends HTMLElement {
         button.remove svg { width: 24px; height: 24px; fill: currentColor; }
         .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
         .toggle input { width: auto; min-height: auto; }
-        .look-around-options { display: grid; gap: 8px; margin-top: 10px; }
         .day-toggle-group { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
         .day-toggle { min-height: 38px; padding: 6px; border-color: var(--divider-color); color: var(--primary-text-color); }
         .day-toggle[aria-pressed="true"] { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); color: var(--primary-color); font-weight: 600; }
@@ -965,12 +1048,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
       <section class="section">
         <h3>Look Around</h3>
         <div class="hint">Allows scrolling to explore events beyond the configured boundaries.</div>
-        <div class="field"><label>Look around</label><select data-action="look-around-mode"><option value="none" ${lookAround.mode === 'none' ? 'selected' : ''}>None</option><option value="horizontal" ${lookAround.mode === 'horizontal' ? 'selected' : ''}>Horizontal</option><option value="vertical" ${lookAround.mode === 'vertical' ? 'selected' : ''}>Vertical</option><option value="full" ${lookAround.mode === 'full' ? 'selected' : ''}>Full</option></select></div>
-        <div class="look-around-options">
-          <label class="toggle"><input data-action="origin-snap" type="checkbox" ${lookAround.origin_snap_distance > 0 ? 'checked' : ''} ${lookAroundDisabled ? 'disabled' : ''}> Snap to origin</label>
-          <label class="toggle"><input data-action="automatic-recenter" type="checkbox" ${lookAround.automatic_recenter > 0 ? 'checked' : ''} ${lookAroundDisabled ? 'disabled' : ''}> Automatically re-center</label>
-        </div>
-        <div class="hint">Snap to origin uses ${LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX}px. Automatic re-center returns after ${LOOK_AROUND_RESET_DELAY_MS / 1_000} seconds. Turn either off to save <code>0</code> in the configuration.</div>
+        <div data-look-around-editor></div>
       </section>
       <section class="section">
         <h3>Advanced</h3>
@@ -981,7 +1059,9 @@ class MultidayCalendarCardEditor extends HTMLElement {
         this.bindEvents();
         this.assignHassToEntityPickers();
         this.renderInteractionEditor();
+        this.renderLookAroundEditor();
         this.updateValidation();
+        this.restoreScrollPositions();
     }
     bindEvents() {
         this.querySelector('[data-action="add-calendar"]')?.addEventListener('click', () => {
@@ -998,19 +1078,6 @@ class MultidayCalendarCardEditor extends HTMLElement {
         this.querySelector('[data-action="fixed-height"]')?.addEventListener('change', (event) => {
             const fixed = event.target.checked;
             this.updateConfig({ height: fixed ? 480 : null }, true);
-        });
-        this.querySelector('[data-action="look-around-mode"]')?.addEventListener('change', (event) => {
-            this.updateLookAround({ mode: event.target.value });
-        });
-        this.querySelector('[data-action="origin-snap"]')?.addEventListener('change', (event) => {
-            this.updateLookAround({
-                origin_snap_distance: event.target.checked ? LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX : 0,
-            });
-        });
-        this.querySelector('[data-action="automatic-recenter"]')?.addEventListener('change', (event) => {
-            this.updateLookAround({
-                automatic_recenter: event.target.checked ? LOOK_AROUND_RESET_DELAY_MS / 1_000 : 0,
-            });
         });
         this.querySelectorAll('[data-action="toggle-skip-day"]').forEach((button) => button.addEventListener('click', () => {
             const day = button.dataset.dayName;
