@@ -372,6 +372,90 @@ function openStreetMapEmbedUrl(location) {
     return url.href;
 }
 
+/** Convert the browser's native scroll coordinates into semantic calendar coordinates. */
+function rawScrollToCalendarPoint(raw, geometry) {
+    return {
+        x: (raw.left - geometry.originRawScroll.left) / geometry.dayWidthPx,
+        y: (raw.top - geometry.originRawScroll.top) / geometry.pixelsPerMinute,
+    };
+}
+/** Convert semantic calendar coordinates into the browser's native scroll coordinates. */
+function calendarPointToRawScroll(point, geometry) {
+    return {
+        left: geometry.originRawScroll.left + point.x * geometry.dayWidthPx,
+        top: geometry.originRawScroll.top + point.y * geometry.pixelsPerMinute,
+    };
+}
+/** Preserve a semantic calendar point while the header or timeline geometry changes. */
+function rebaseRawScrollForGeometry(raw, previous, next) {
+    return calendarPointToRawScroll(rawScrollToCalendarPoint(raw, previous), next);
+}
+const LOOK_AROUND_RESET_DELAY_MS = 30_000;
+/** Snap to the configured start position only when resting within this distance. */
+const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
+/** Number of rendered dates on each side of the active date window. */
+const LOOK_AROUND_BUFFER_DAYS = 90;
+/** Minutes rendered before and after the configured daily time range. */
+const LOOK_AROUND_VERTICAL_BUFFER_MINUTES = 2 * 60;
+const LOOK_AROUND_MODES = ['full', 'horizontal', 'vertical', 'none'];
+/** Invalid or omitted modes resolve to the static view. */
+function normalizeLookAroundMode(value) {
+    return typeof value === 'string' && LOOK_AROUND_MODES.includes(value)
+        ? value
+        : 'none';
+}
+/** Normalize the nested configuration into runtime defaults. */
+function normalizeLookAroundSettings(value) {
+    const settings = value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : undefined;
+    const originSnapDistance = settings?.origin_snap_distance;
+    const automaticRecenter = settings?.automatic_recenter;
+    return {
+        mode: normalizeLookAroundMode(settings?.mode),
+        origin_snap_distance: typeof originSnapDistance === 'number' && Number.isFinite(originSnapDistance) && originSnapDistance >= 0
+            ? originSnapDistance
+            : LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX,
+        automatic_recenter: typeof automaticRecenter === 'number' && Number.isFinite(automaticRecenter) && automaticRecenter >= 0
+            ? automaticRecenter
+            : LOOK_AROUND_RESET_DELAY_MS / 1_000,
+    };
+}
+/** Validate the nested YAML configuration. */
+function validateLookAroundSettings(value) {
+    if (value === undefined)
+        return [];
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        return ['Look around must be an object with mode, origin_snap_distance, and automatic_recenter.'];
+    }
+    const settings = value;
+    const errors = [];
+    if (settings.mode !== undefined && normalizeLookAroundMode(settings.mode) === 'none' && settings.mode !== 'none') {
+        errors.push('Look around mode must be none, horizontal, vertical, or full.');
+    }
+    if (settings.origin_snap_distance !== undefined &&
+        (typeof settings.origin_snap_distance !== 'number' || !Number.isFinite(settings.origin_snap_distance) || settings.origin_snap_distance < 0)) {
+        errors.push('Origin snap distance must be a non-negative number of pixels.');
+    }
+    if (settings.automatic_recenter !== undefined &&
+        (typeof settings.automatic_recenter !== 'number' || !Number.isFinite(settings.automatic_recenter) || settings.automatic_recenter < 0)) {
+        errors.push('Automatic recenter must be a non-negative number of seconds.');
+    }
+    return errors;
+}
+function hasHorizontalLookAround(mode) {
+    return mode === 'horizontal' || mode === 'full';
+}
+function hasVerticalLookAround(mode) {
+    return mode === 'vertical' || mode === 'full';
+}
+/** The vertical buffer always spans 22:00 of the prior day through 02:00 of the next. */
+function lookAroundVerticalRange(mode, startMinutes, endMinutes) {
+    return hasVerticalLookAround(mode)
+        ? { startMinutes: -LOOK_AROUND_VERTICAL_BUFFER_MINUTES, endMinutes: 24 * 60 + LOOK_AROUND_VERTICAL_BUFFER_MINUTES }
+        : { startMinutes, endMinutes };
+}
+
 const GRID_INTERVALS = [15, 20, 30, 60, 120];
 function parseTime(value) {
     if (value === undefined)
@@ -444,6 +528,7 @@ function validateEditorConfig(config) {
     if (config.max_simultaneous_events !== undefined && (!Number.isInteger(config.max_simultaneous_events) || config.max_simultaneous_events < 1)) {
         errors.push('Maximum simultaneous events must be a positive whole number.');
     }
+    errors.push(...validateLookAroundSettings(config.look_around));
     const tapActionError = validateTapAction(config.tap_action);
     if (tapActionError)
         errors.push(tapActionError);
@@ -470,51 +555,6 @@ function editorWarnings(config) {
             warnings.push(`Two or more calendar sources use the ${property} ${property === 'label' ? `“${duplicate}”` : duplicate}.`);
     }
     return warnings;
-}
-
-/** Convert the browser's native scroll coordinates into semantic calendar coordinates. */
-function rawScrollToCalendarPoint(raw, geometry) {
-    return {
-        x: (raw.left - geometry.originRawScroll.left) / geometry.dayWidthPx,
-        y: (raw.top - geometry.originRawScroll.top) / geometry.pixelsPerMinute,
-    };
-}
-/** Convert semantic calendar coordinates into the browser's native scroll coordinates. */
-function calendarPointToRawScroll(point, geometry) {
-    return {
-        left: geometry.originRawScroll.left + point.x * geometry.dayWidthPx,
-        top: geometry.originRawScroll.top + point.y * geometry.pixelsPerMinute,
-    };
-}
-/** Preserve a semantic calendar point while the header or timeline geometry changes. */
-function rebaseRawScrollForGeometry(raw, previous, next) {
-    return calendarPointToRawScroll(rawScrollToCalendarPoint(raw, previous), next);
-}
-const LOOK_AROUND_RESET_DELAY_MS = 30_000;
-/** Snap to the configured start position only when resting within this distance. */
-const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
-/** Number of rendered dates on each side of the active date window. */
-const LOOK_AROUND_BUFFER_DAYS = 90;
-/** Minutes rendered before and after the configured daily time range. */
-const LOOK_AROUND_VERTICAL_BUFFER_MINUTES = 2 * 60;
-const LOOK_AROUND_MODES = ['full', 'horizontal', 'vertical', 'none'];
-/** Invalid, omitted, and legacy boolean values deliberately fall back to static mode. */
-function normalizeLookAroundMode(value) {
-    return typeof value === 'string' && LOOK_AROUND_MODES.includes(value)
-        ? value
-        : 'none';
-}
-function hasHorizontalLookAround(mode) {
-    return mode === 'horizontal' || mode === 'full';
-}
-function hasVerticalLookAround(mode) {
-    return mode === 'vertical' || mode === 'full';
-}
-/** The vertical buffer always spans 22:00 of the prior day through 02:00 of the next. */
-function lookAroundVerticalRange(mode, startMinutes, endMinutes) {
-    return hasVerticalLookAround(mode)
-        ? { startMinutes: -LOOK_AROUND_VERTICAL_BUFFER_MINUTES, endMinutes: 24 * 60 + LOOK_AROUND_VERTICAL_BUFFER_MINUTES }
-        : { startMinutes, endMinutes };
 }
 
 // Generated from src/icons/recenter.svg; do not edit manually.
@@ -783,6 +823,11 @@ class MultidayCalendarCardEditor extends HTMLElement {
         const calendars = (this._config.calendars ?? []).map((calendar, row) => row === index ? { ...calendar, ...update } : calendar);
         this.updateConfig({ calendars });
     }
+    updateLookAround(update) {
+        this.updateConfig({
+            look_around: { ...normalizeLookAroundSettings(this._config.look_around), ...update },
+        }, true);
+    }
     assignHassToEntityPickers() {
         this.querySelectorAll('.calendar-row ha-entity-picker').forEach((picker) => {
             picker.hass = this._hass;
@@ -849,6 +894,8 @@ class MultidayCalendarCardEditor extends HTMLElement {
         const fixedHeight = config.height !== undefined && config.height !== null;
         const startTime = config.start_time ?? '06:00';
         const endTime = config.end_time ?? '22:00';
+        const lookAround = normalizeLookAroundSettings(config.look_around);
+        const lookAroundDisabled = lookAround.mode === 'none';
         this.innerHTML = `
       <style>
         :host { display: block; }
@@ -871,6 +918,7 @@ class MultidayCalendarCardEditor extends HTMLElement {
         button.remove svg { width: 24px; height: 24px; fill: currentColor; }
         .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
         .toggle input { width: auto; min-height: auto; }
+        .look-around-options { display: grid; gap: 8px; margin-top: 10px; }
         .day-toggle-group { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
         .day-toggle { min-height: 38px; padding: 6px; border-color: var(--divider-color); color: var(--primary-text-color); }
         .day-toggle[aria-pressed="true"] { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); color: var(--primary-color); font-weight: 600; }
@@ -904,8 +952,6 @@ class MultidayCalendarCardEditor extends HTMLElement {
           <div class="field"><label>End time</label><select data-config="end_time">${parseTime(endTime) % 60 !== 0 ? `<option value="${endTime}" selected>${endTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${endTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
         </div>
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
-        <div class="field"><label>Look around</label><select data-config="look_around"><option value="none" ${config.look_around === undefined || config.look_around === 'none' ? 'selected' : ''}>None</option><option value="horizontal" ${config.look_around === 'horizontal' ? 'selected' : ''}>Horizontal</option><option value="vertical" ${config.look_around === 'vertical' ? 'selected' : ''}>Vertical</option><option value="full" ${config.look_around === 'full' ? 'selected' : ''}>Full</option></select></div>
-        <div class="hint">Horizontal scroll previews blank date columns; vertical scroll previews two hours before and after the configured daily range. Full enables both. The view returns to its configured date/time position after 30 seconds; no additional calendar data is loaded.</div>
         <div class="field"><label>Skip days</label><div class="day-toggle-group" role="group" aria-label="Days to skip">${DAY_NAMES.map((day) => `<button class="day-toggle" data-action="toggle-skip-day" data-day-name="${day}" type="button" aria-pressed="${config.skip_days?.includes(day) === true}">${day}</button>`).join('')}</div><div class="hint">Selected days are omitted. Use two-letter names in YAML, for example <code>skip_days: [sa, su]</code>.</div></div>
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
@@ -915,6 +961,16 @@ class MultidayCalendarCardEditor extends HTMLElement {
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
         <div class="field"><label>Hour height (pixels)</label><input data-config="hour_height" type="number" min="1" step="1" value="${config.hour_height ?? 56}" ${fixedHeight ? 'disabled' : ''}><div class="hint">Timeline height per visible hour. Defaults to 56 pixels when omitted.</div></div>
         <div class="field fixed-height-field"><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}" ${fixedHeight ? '' : 'disabled'}><div class="hint">A fixed height compresses the timeline and overrides hour height; it does not hide events.</div></div>
+      </section>
+      <section class="section">
+        <h3>Look Around</h3>
+        <div class="hint">Allows scrolling to explore events beyond the configured boundaries.</div>
+        <div class="field"><label>Look around</label><select data-action="look-around-mode"><option value="none" ${lookAround.mode === 'none' ? 'selected' : ''}>None</option><option value="horizontal" ${lookAround.mode === 'horizontal' ? 'selected' : ''}>Horizontal</option><option value="vertical" ${lookAround.mode === 'vertical' ? 'selected' : ''}>Vertical</option><option value="full" ${lookAround.mode === 'full' ? 'selected' : ''}>Full</option></select></div>
+        <div class="look-around-options">
+          <label class="toggle"><input data-action="origin-snap" type="checkbox" ${lookAround.origin_snap_distance > 0 ? 'checked' : ''} ${lookAroundDisabled ? 'disabled' : ''}> Snap to origin</label>
+          <label class="toggle"><input data-action="automatic-recenter" type="checkbox" ${lookAround.automatic_recenter > 0 ? 'checked' : ''} ${lookAroundDisabled ? 'disabled' : ''}> Automatically re-center</label>
+        </div>
+        <div class="hint">Snap to origin uses ${LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX}px. Automatic re-center returns after ${LOOK_AROUND_RESET_DELAY_MS / 1_000} seconds. Turn either off to save <code>0</code> in the configuration.</div>
       </section>
       <section class="section">
         <h3>Advanced</h3>
@@ -942,6 +998,19 @@ class MultidayCalendarCardEditor extends HTMLElement {
         this.querySelector('[data-action="fixed-height"]')?.addEventListener('change', (event) => {
             const fixed = event.target.checked;
             this.updateConfig({ height: fixed ? 480 : null }, true);
+        });
+        this.querySelector('[data-action="look-around-mode"]')?.addEventListener('change', (event) => {
+            this.updateLookAround({ mode: event.target.value });
+        });
+        this.querySelector('[data-action="origin-snap"]')?.addEventListener('change', (event) => {
+            this.updateLookAround({
+                origin_snap_distance: event.target.checked ? LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX : 0,
+            });
+        });
+        this.querySelector('[data-action="automatic-recenter"]')?.addEventListener('change', (event) => {
+            this.updateLookAround({
+                automatic_recenter: event.target.checked ? LOOK_AROUND_RESET_DELAY_MS / 1_000 : 0,
+            });
         });
         this.querySelectorAll('[data-action="toggle-skip-day"]').forEach((button) => button.addEventListener('click', () => {
             const day = button.dataset.dayName;
@@ -991,7 +1060,11 @@ const DEFAULT_CONFIG = {
     refresh_interval: 30,
     height: null,
     hour_height: 56,
-    look_around: 'none',
+    look_around: {
+        mode: 'none',
+        origin_snap_distance: 30,
+        automatic_recenter: 30,
+    },
     show_now_line: true,
     skip_days: [],
     max_simultaneous_events: 3,
@@ -1136,6 +1209,9 @@ class MultiDayCalendarCard extends HTMLElement {
         if (height === null && (!Number.isFinite(hourHeight) || hourHeight <= 0)) {
             throw new Error('hour_height must be a positive number of pixels when height is omitted');
         }
+        const lookAroundErrors = validateLookAroundSettings(config.look_around);
+        if (lookAroundErrors.length > 0)
+            throw new Error(lookAroundErrors.join(' '));
         const calendars = config.calendars ?? [];
         if (!calendars.every((calendar) => calendar.entity.startsWith('calendar.'))) {
             throw new Error('Every calendars entry requires a calendar.* entity');
@@ -1153,7 +1229,7 @@ class MultiDayCalendarCard extends HTMLElement {
             max_simultaneous_events: maxSimultaneousEvents,
             height,
             hour_height: hourHeight,
-            look_around: normalizeLookAroundMode(config.look_around),
+            look_around: normalizeLookAroundSettings(config.look_around),
             calendars,
             tap_action: normalizeTapAction(config.tap_action),
             show_location_map: config.show_location_map === true,
@@ -1263,7 +1339,7 @@ class MultiDayCalendarCard extends HTMLElement {
         const now = new Date();
         const configuredStartMinutes = parseTime(this._config.start_time);
         const configuredEndMinutes = parseTime(this._config.end_time);
-        const { startMinutes, endMinutes } = lookAroundVerticalRange(this._config.look_around, configuredStartMinutes, configuredEndMinutes);
+        const { startMinutes, endMinutes } = lookAroundVerticalRange(this._config.look_around.mode, configuredStartMinutes, configuredEndMinutes);
         const todayKey = localDateKey(now);
         this.querySelectorAll('.day-column').forEach((column) => {
             const top = this._config.show_now_line && column.dataset.day === todayKey
@@ -1453,13 +1529,13 @@ class MultiDayCalendarCard extends HTMLElement {
     }
     /** Keep the configured vertical time range fully visible in a fixed full-look-around card. */
     syncFixedVerticalLookAroundGeometry() {
-        if (!this._config || this._config.height === null || !hasVerticalLookAround(this._config.look_around))
+        if (!this._config || this._config.height === null || !hasVerticalLookAround(this._config.look_around.mode))
             return;
         const configuredStart = parseTime(this._config.start_time);
         const configuredEnd = parseTime(this._config.end_time);
         if (configuredStart === undefined || configuredEnd === undefined)
             return;
-        const range = lookAroundVerticalRange(this._config.look_around, configuredStart, configuredEnd);
+        const range = lookAroundVerticalRange(this._config.look_around.mode, configuredStart, configuredEnd);
         const configuredMinutes = configuredEnd - configuredStart;
         if (configuredMinutes <= 0)
             return;
@@ -1487,7 +1563,7 @@ class MultiDayCalendarCard extends HTMLElement {
         const config = this._config;
         const configuredStartMinutes = parseTime(config.start_time);
         const configuredEndMinutes = parseTime(config.end_time);
-        const { startMinutes, endMinutes } = lookAroundVerticalRange(config.look_around, configuredStartMinutes, configuredEndMinutes);
+        const { startMinutes, endMinutes } = lookAroundVerticalRange(config.look_around.mode, configuredStartMinutes, configuredEndMinutes);
         const minutesVisible = endMinutes - startMinutes;
         for (const key of dayKeys) {
             const column = this.querySelector(`.day-column[data-day="${key}"]`);
@@ -1649,13 +1725,15 @@ class MultiDayCalendarCard extends HTMLElement {
         };
         this._lookAroundAnimationFrameId = requestAnimationFrame(animate);
     }
-    scheduleLookAroundReset(reset) {
+    scheduleLookAroundReset(delaySeconds, reset) {
+        if (delaySeconds === 0)
+            return;
         if (this._lookAroundResetTimerId !== undefined)
             clearTimeout(this._lookAroundResetTimerId);
         this._lookAroundResetTimerId = window.setTimeout(() => {
             this._lookAroundResetTimerId = undefined;
             reset();
-        }, LOOK_AROUND_RESET_DELAY_MS);
+        }, delaySeconds * 1_000);
     }
     viewportDays(viewport) {
         const viewportBounds = viewport.getBoundingClientRect();
@@ -1678,14 +1756,16 @@ class MultiDayCalendarCard extends HTMLElement {
         });
     }
     bindLookAround(initialScrollPosition) {
-        if (!this._config || this._config.look_around === 'none')
+        if (!this._config || this._config.look_around.mode === 'none')
             return;
         const viewport = this.querySelector('.calendar-viewport');
         if (!viewport)
             return;
         let scrollPositionToRestore = initialScrollPosition;
-        const horizontal = hasHorizontalLookAround(this._config.look_around);
-        const vertical = hasVerticalLookAround(this._config.look_around);
+        const horizontal = hasHorizontalLookAround(this._config.look_around.mode);
+        const vertical = hasVerticalLookAround(this._config.look_around.mode);
+        const originSnapDistance = this._config.look_around.origin_snap_distance;
+        const automaticRecenter = this._config.look_around.automatic_recenter;
         const anchorColumn = () => viewport.querySelector('[data-look-around-anchor]');
         const anchorVertical = () => viewport.querySelector('[data-look-around-vertical-anchor]');
         const nativeTimeAxisWidth = () => viewport.classList.contains('native-vertical-time-axis')
@@ -1711,7 +1791,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 return undefined;
             const viewportBounds = viewport.getBoundingClientRect();
             const headerHeight = viewport.querySelector('.day-header')?.getBoundingClientRect().height ?? 0;
-            const verticalRange = lookAroundVerticalRange(this._config.look_around, parseTime(this._config.start_time), parseTime(this._config.end_time));
+            const verticalRange = lookAroundVerticalRange(this._config.look_around.mode, parseTime(this._config.start_time), parseTime(this._config.end_time));
             const timelineHeight = verticalAnchor?.parentElement?.getBoundingClientRect().height ?? 1;
             const dayWidth = horizontalAnchor?.getBoundingClientRect().width ?? 1;
             return {
@@ -1735,7 +1815,7 @@ class MultiDayCalendarCard extends HTMLElement {
                 (!vertical || Math.abs(point.y) <= 1 / scrollGeometry.pixelsPerMinute);
         };
         let initialized = false;
-        let originLocked = true;
+        let originLocked = originSnapDistance > 0;
         let accumulatedOriginScrollLeft = 0;
         let accumulatedOriginScrollTop = 0;
         const positionAtStartDay = () => {
@@ -1762,7 +1842,7 @@ class MultiDayCalendarCard extends HTMLElement {
                     (vertical && Math.abs(viewport.scrollTop - startTop) > 1));
             scrollPositionToRestore = undefined;
             setRecenterButtonVisibility(restoredOffOrigin);
-            originLocked = !restoredOffOrigin;
+            originLocked = originSnapDistance > 0 && !restoredOffOrigin;
             accumulatedOriginScrollLeft = 0;
             accumulatedOriginScrollTop = 0;
             initialized = true;
@@ -1790,13 +1870,13 @@ class MultiDayCalendarCard extends HTMLElement {
                 return;
             this._lookAroundScrollInProgress = false;
             refreshGeometryAfterHeaderUpdate();
-            this.scheduleLookAroundReset(resetLookAround);
+            this.scheduleLookAroundReset(automaticRecenter, resetLookAround);
         };
         const releaseOriginLock = (deltaLeft, deltaTop) => {
             accumulatedOriginScrollLeft += deltaLeft;
             accumulatedOriginScrollTop += deltaTop;
-            if (Math.abs(accumulatedOriginScrollLeft) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX &&
-                Math.abs(accumulatedOriginScrollTop) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX)
+            if (Math.abs(accumulatedOriginScrollLeft) < originSnapDistance &&
+                Math.abs(accumulatedOriginScrollTop) < originSnapDistance)
                 return;
             originLocked = false;
             if (horizontal)
@@ -1860,7 +1940,7 @@ class MultiDayCalendarCard extends HTMLElement {
             refreshGeometryAfterHeaderUpdate();
             hideRecenterButton();
             this.querySelector('.time-axis-bottom-fade')?.classList.remove('is-active');
-            originLocked = true;
+            originLocked = originSnapDistance > 0;
             accumulatedOriginScrollLeft = 0;
             accumulatedOriginScrollTop = 0;
         });
@@ -1958,9 +2038,9 @@ class MultiDayCalendarCard extends HTMLElement {
         const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
         const configuredStartMinutes = parseTime(config.start_time);
         const configuredEndMinutes = parseTime(config.end_time);
-        const horizontalLookAround = hasHorizontalLookAround(config.look_around);
-        const verticalLookAround = hasVerticalLookAround(config.look_around);
-        const verticalRange = lookAroundVerticalRange(config.look_around, configuredStartMinutes, configuredEndMinutes);
+        const horizontalLookAround = hasHorizontalLookAround(config.look_around.mode);
+        const verticalLookAround = hasVerticalLookAround(config.look_around.mode);
+        const verticalRange = lookAroundVerticalRange(config.look_around.mode, configuredStartMinutes, configuredEndMinutes);
         const startMinutes = verticalRange.startMinutes;
         const endMinutes = verticalRange.endMinutes;
         const minutesVisible = endMinutes - startMinutes;

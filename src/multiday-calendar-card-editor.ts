@@ -10,6 +10,12 @@ import {
 } from './editor-model';
 import { type EventAction } from './event-interaction';
 import { DAY_NAMES, type DayName } from './calendar-model';
+import {
+  LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX,
+  LOOK_AROUND_RESET_DELAY_MS,
+  normalizeLookAroundSettings,
+  type LookAroundSettings,
+} from './look-around-model';
 
 type HomeAssistantLike = {
   states?: Record<string, unknown>;
@@ -141,6 +147,12 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     this.updateConfig({ calendars });
   }
 
+  private updateLookAround(update: Partial<LookAroundSettings>): void {
+    this.updateConfig({
+      look_around: { ...normalizeLookAroundSettings(this._config.look_around), ...update },
+    }, true);
+  }
+
   private assignHassToEntityPickers(): void {
     this.querySelectorAll<EntityPicker>('.calendar-row ha-entity-picker').forEach((picker) => {
       picker.hass = this._hass;
@@ -216,6 +228,8 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     const fixedHeight = config.height !== undefined && config.height !== null;
     const startTime = config.start_time ?? '06:00';
     const endTime = config.end_time ?? '22:00';
+    const lookAround = normalizeLookAroundSettings(config.look_around);
+    const lookAroundDisabled = lookAround.mode === 'none';
 
     this.innerHTML = `
       <style>
@@ -239,6 +253,7 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         button.remove svg { width: 24px; height: 24px; fill: currentColor; }
         .toggle { display: flex; align-items: center; gap: 8px; color: var(--primary-text-color); }
         .toggle input { width: auto; min-height: auto; }
+        .look-around-options { display: grid; gap: 8px; margin-top: 10px; }
         .day-toggle-group { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
         .day-toggle { min-height: 38px; padding: 6px; border-color: var(--divider-color); color: var(--primary-text-color); }
         .day-toggle[aria-pressed="true"] { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); color: var(--primary-color); font-weight: 600; }
@@ -272,8 +287,6 @@ export class MultidayCalendarCardEditor extends HTMLElement {
           <div class="field"><label>End time</label><select data-config="end_time">${parseTime(endTime)! % 60 !== 0 ? `<option value="${endTime}" selected>${endTime} (custom)</option>` : ''}${Array.from({ length: 24 }, (_, hour) => hour + 1).map((hour) => `<option value="${String(hour).padStart(2, '0')}:00" ${endTime === formatTime(hour * 60) ? 'selected' : ''}>${String(hour).padStart(2, '0')}:00</option>`).join('')}</select></div>
         </div>
         <label class="toggle"><input data-config="show_now_line" type="checkbox" ${config.show_now_line !== false ? 'checked' : ''}> Show current-time line</label>
-        <div class="field"><label>Look around</label><select data-config="look_around"><option value="none" ${config.look_around === undefined || config.look_around === 'none' ? 'selected' : ''}>None</option><option value="horizontal" ${config.look_around === 'horizontal' ? 'selected' : ''}>Horizontal</option><option value="vertical" ${config.look_around === 'vertical' ? 'selected' : ''}>Vertical</option><option value="full" ${config.look_around === 'full' ? 'selected' : ''}>Full</option></select></div>
-        <div class="hint">Horizontal scroll previews blank date columns; vertical scroll previews two hours before and after the configured daily range. Full enables both. The view returns to its configured date/time position after 30 seconds; no additional calendar data is loaded.</div>
         <div class="field"><label>Skip days</label><div class="day-toggle-group" role="group" aria-label="Days to skip">${DAY_NAMES.map((day) => `<button class="day-toggle" data-action="toggle-skip-day" data-day-name="${day}" type="button" aria-pressed="${config.skip_days?.includes(day) === true}">${day}</button>`).join('')}</div><div class="hint">Selected days are omitted. Use two-letter names in YAML, for example <code>skip_days: [sa, su]</code>.</div></div>
         <div class="field"><label>Maximum simultaneous timed events</label><input data-config="max_simultaneous_events" type="number" min="1" step="1" value="${config.max_simultaneous_events ?? 3}"><div class="hint">At 1, only the first overlapping event is shown. At 2 or more, the final lane summarizes any excess as “+N more”.</div></div>
       </section>
@@ -283,6 +296,16 @@ export class MultidayCalendarCardEditor extends HTMLElement {
         <label class="toggle"><input type="checkbox" data-action="fixed-height" ${fixedHeight ? 'checked' : ''}> Use a fixed card height</label>
         <div class="field"><label>Hour height (pixels)</label><input data-config="hour_height" type="number" min="1" step="1" value="${config.hour_height ?? 56}" ${fixedHeight ? 'disabled' : ''}><div class="hint">Timeline height per visible hour. Defaults to 56 pixels when omitted.</div></div>
         <div class="field fixed-height-field"><label>Fixed height (pixels)</label><input data-config="height" type="number" min="1" step="1" value="${fixedHeight ? config.height : ''}" ${fixedHeight ? '' : 'disabled'}><div class="hint">A fixed height compresses the timeline and overrides hour height; it does not hide events.</div></div>
+      </section>
+      <section class="section">
+        <h3>Look Around</h3>
+        <div class="hint">Allows scrolling to explore events beyond the configured boundaries.</div>
+        <div class="field"><label>Look around</label><select data-action="look-around-mode"><option value="none" ${lookAround.mode === 'none' ? 'selected' : ''}>None</option><option value="horizontal" ${lookAround.mode === 'horizontal' ? 'selected' : ''}>Horizontal</option><option value="vertical" ${lookAround.mode === 'vertical' ? 'selected' : ''}>Vertical</option><option value="full" ${lookAround.mode === 'full' ? 'selected' : ''}>Full</option></select></div>
+        <div class="look-around-options">
+          <label class="toggle"><input data-action="origin-snap" type="checkbox" ${lookAround.origin_snap_distance > 0 ? 'checked' : ''} ${lookAroundDisabled ? 'disabled' : ''}> Snap to origin</label>
+          <label class="toggle"><input data-action="automatic-recenter" type="checkbox" ${lookAround.automatic_recenter > 0 ? 'checked' : ''} ${lookAroundDisabled ? 'disabled' : ''}> Automatically re-center</label>
+        </div>
+        <div class="hint">Snap to origin uses ${LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX}px. Automatic re-center returns after ${LOOK_AROUND_RESET_DELAY_MS / 1_000} seconds. Turn either off to save <code>0</code> in the configuration.</div>
       </section>
       <section class="section">
         <h3>Advanced</h3>
@@ -311,6 +334,19 @@ export class MultidayCalendarCardEditor extends HTMLElement {
     this.querySelector('[data-action="fixed-height"]')?.addEventListener('change', (event) => {
       const fixed = (event.target as HTMLInputElement).checked;
       this.updateConfig({ height: fixed ? 480 : null }, true);
+    });
+    this.querySelector<HTMLSelectElement>('[data-action="look-around-mode"]')?.addEventListener('change', (event) => {
+      this.updateLookAround({ mode: (event.target as HTMLSelectElement).value as LookAroundSettings['mode'] });
+    });
+    this.querySelector<HTMLInputElement>('[data-action="origin-snap"]')?.addEventListener('change', (event) => {
+      this.updateLookAround({
+        origin_snap_distance: (event.target as HTMLInputElement).checked ? LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX : 0,
+      });
+    });
+    this.querySelector<HTMLInputElement>('[data-action="automatic-recenter"]')?.addEventListener('change', (event) => {
+      this.updateLookAround({
+        automatic_recenter: (event.target as HTMLInputElement).checked ? LOOK_AROUND_RESET_DELAY_MS / 1_000 : 0,
+      });
     });
     this.querySelectorAll<HTMLButtonElement>('[data-action="toggle-skip-day"]').forEach((button) => button.addEventListener('click', () => {
       const day = button.dataset.dayName as DayName;

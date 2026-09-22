@@ -95,11 +95,31 @@ test('validateEditorConfig accepts an optional start_day_entity and rejects an e
   ]);
 });
 
-test('validateEditorConfig leaves unsupported look_around values to runtime static-mode normalization', () => {
+test('validateEditorConfig requires the unreleased look-around feature to use its nested object', () => {
   const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
 
-  assert.deepEqual(validateEditorConfig({ ...base, look_around: 'horizontal' }), []);
-  assert.deepEqual(validateEditorConfig({ ...base, look_around: 'unexpected' }), []);
+  assert.deepEqual(validateEditorConfig({ ...base, look_around: 'horizontal' as never }), [
+    'Look around must be an object with mode, origin_snap_distance, and automatic_recenter.',
+  ]);
+  assert.deepEqual(validateEditorConfig({ ...base, look_around: { mode: 'unexpected' as never } }), [
+    'Look around mode must be none, horizontal, vertical, or full.',
+  ]);
+});
+
+test('validateEditorConfig accepts nested look-around controls including zero-value opt-outs', () => {
+  const base = { type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.household' }] };
+
+  assert.deepEqual(validateEditorConfig({
+    ...base,
+    look_around: { mode: 'full', origin_snap_distance: 0, automatic_recenter: 0 },
+  }), []);
+  assert.deepEqual(validateEditorConfig({
+    ...base,
+    look_around: { mode: 'horizontal', origin_snap_distance: -1, automatic_recenter: Number.NaN },
+  }), [
+    'Origin snap distance must be a non-negative number of pixels.',
+    'Automatic recenter must be a non-negative number of seconds.',
+  ]);
 });
 
 test('validateEditorConfig accepts arbitrary minute bounds and rejects malformed or reversed times', () => {

@@ -10,9 +10,11 @@ import {
   hasVerticalLookAround,
   lookAroundVerticalRange,
   normalizeLookAroundMode,
+  normalizeLookAroundSettings,
   rawScrollToCalendarPoint,
   calendarPointToRawScroll,
   rebaseRawScrollForGeometry,
+  validateLookAroundSettings,
 } from '../src/look-around-model';
 
 test('look-around waits 30 seconds after horizontal scrolling before returning to its start-day position', () => {
@@ -75,4 +77,24 @@ test('look-around modes default invalid input to static and independently select
   assert.deepEqual(lookAroundVerticalRange('vertical', 360, 1320), { startMinutes: -120, endMinutes: 1560 });
   assert.deepEqual(lookAroundVerticalRange('full', 0, 1440), { startMinutes: -120, endMinutes: 1560 });
   assert.deepEqual(lookAroundVerticalRange('none', 360, 1320), { startMinutes: 360, endMinutes: 1320 });
+});
+
+test('look-around uses only the nested configuration and defaults omitted settings', () => {
+  assert.deepEqual(normalizeLookAroundSettings(undefined), {
+    mode: 'none',
+    origin_snap_distance: 30,
+    automatic_recenter: 30,
+  });
+  assert.deepEqual(normalizeLookAroundSettings({ mode: 'full', origin_snap_distance: 0, automatic_recenter: 0 }), {
+    mode: 'full',
+    origin_snap_distance: 0,
+    automatic_recenter: 0,
+  });
+  assert.deepEqual(validateLookAroundSettings({ mode: 'vertical', origin_snap_distance: -1, automatic_recenter: '30' }), [
+    'Origin snap distance must be a non-negative number of pixels.',
+    'Automatic recenter must be a non-negative number of seconds.',
+  ]);
+  assert.deepEqual(validateLookAroundSettings('horizontal'), [
+    'Look around must be an object with mode, origin_snap_distance, and automatic_recenter.',
+  ]);
 });

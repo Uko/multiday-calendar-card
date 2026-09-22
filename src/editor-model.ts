@@ -1,7 +1,10 @@
 import { validateTapAction, type EventAction } from './event-interaction';
 import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
 import { DAY_NAMES, type DayName } from './calendar-model';
-import { type LookAroundMode } from './look-around-model';
+import {
+  validateLookAroundSettings,
+  type LookAroundConfig,
+} from './look-around-model';
 
 export type CalendarEditorConfig = {
   entity: string;
@@ -21,7 +24,7 @@ export type EditorConfig = {
   slot_minutes?: number;
   height?: number | null;
   hour_height?: number;
-  look_around?: LookAroundMode;
+  look_around?: LookAroundConfig;
   show_now_line?: boolean;
   skip_days?: DayName[];
   max_simultaneous_events?: number;
@@ -105,6 +108,7 @@ export function validateEditorConfig(config: EditorConfig): string[] {
   if (config.max_simultaneous_events !== undefined && (!Number.isInteger(config.max_simultaneous_events) || config.max_simultaneous_events < 1)) {
     errors.push('Maximum simultaneous events must be a positive whole number.');
   }
+  errors.push(...validateLookAroundSettings(config.look_around));
   const tapActionError = validateTapAction(config.tap_action);
   if (tapActionError) errors.push(tapActionError);
   if (config.show_location_map !== undefined && typeof config.show_location_map !== 'boolean') {

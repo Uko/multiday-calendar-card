@@ -173,7 +173,7 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
 
   const requests: string[] = [];
   const card = new CalendarCard() as FakeHTMLElement & {
-    setConfig(config: { type: string; calendars: Array<{ entity: string }>; days: number; look_around: string }): void;
+    setConfig(config: { type: string; calendars: Array<{ entity: string }>; days: number; look_around: { mode: 'horizontal' } }): void;
     hass: { callApi<T>(method: string, path: string): Promise<T> };
     render(): void;
     loadEvents(force?: boolean, days?: readonly Date[]): Promise<void>;
@@ -193,7 +193,7 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
     type: 'custom:multiday-calendar-card',
     calendars: [{ entity: 'calendar.work' }],
     days: 2,
-    look_around: 'horizontal',
+    look_around: { mode: 'horizontal' },
   });
   card._activeStartDay = new Date(2026, 0, 1);
   renderCount = 0;

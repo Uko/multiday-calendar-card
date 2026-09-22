@@ -19,7 +19,7 @@ It exists for dashboards and kiosks where a compact calendar list is not enough:
 - Handle simultaneous events in adjacent lanes, with a `+N more` summary when the lane limit is exceeded.
 - Use the visual card editor for everyday settings, or configure the card entirely in YAML.
 - Choose an automatic timeline height or a fixed card height for dense dashboards and kiosks.
-- Optionally scroll horizontally to inspect blank grid space around the configured start day, then return automatically.
+- Optionally look around beyond the configured date and time boundaries, with configurable origin snapping and automatic re-centering.
 
 ## Installation
 
@@ -96,11 +96,9 @@ calendars:
 | `title` | no title | Optional heading. Omit it for a titleless card. |
 | `calendars` | `[]` | Calendar sources to show. Each source needs a `calendar.*` entity. See [Calendar sources](#calendar-sources). |
 | `days` | `2` | Whole number of days to display, from `1` to `7`. |
-| `start_day_entity` | unset | Optional entity whose `YYYY-MM-DD` or `YYYY-MM-DD HH:mm:ss` state determines the first displayed day. An `input_datetime` with a date is the intended dashboard-navigation helper; when omitted or invalid, the card starts today. |
 | `start_time` | `"06:00"` | First visible time, in `HH:mm` format. |
 | `end_time` | `"22:00"` | Last visible time, in `HH:mm` format. It must be after `start_time`; `"24:00"` is accepted as the end of the day. |
 | `slot_minutes` | `30` | Grid interval. Allowed values are `15`, `20`, `30`, `60`, and `120`. |
-| `look_around` | `false` | Enables native horizontal scrolling for trackpads, touchscreens, and horizontal mouse wheels. CSS scroll snap settles the grid on complete day columns. The card keeps a virtual date window and recenters it as needed, so scrolling is not bounded by a pre-rendered three-day pane. It still renders date grids only—no additional calendar requests or events are loaded. |
 | `show_now_line` | `true` | Show or hide the current-time line. |
 | `skip_days` | `[]` | Two-letter day names to omit: `mo`, `tu`, `we`, `th`, `fr`, `sa`, `su`. The card keeps looking forward until it has displayed `days` non-skipped dates, marks a skipped-date gap with a thicker divider, and uses a 2px leading border when today itself is skipped. It cannot contain all seven names. |
 | `max_simultaneous_events` | `3` | Positive whole-number lane cap for overlapping timed events. At `1`, only the first event is shown; at `2` or more, excess events are represented by `+N more`. |
@@ -111,6 +109,10 @@ calendars:
 | `hour_height` | `56` | Timeline height in pixels per visible hour. Used when `height` is omitted. |
 | `height` | unset | Fixed outer-card height in pixels. It takes precedence over `hour_height` and compresses the timeline without hiding events. |
 | `refresh_interval` | `30` | Minutes between calendar refreshes. It must be a positive number. |
+| `look_around.mode` | `none` | Enables scrolling to explore events beyond the configured boundaries. Allowed values: `none`, `horizontal`, `vertical`, and `full`. |
+| `look_around.origin_snap_distance` | `30` | Prevents the calendar from scrolling until the configured amount of scrolling input was registered in pixels. Set `0` to disable origin snapping. |
+| `look_around.automatic_recenter` | `30` | Seconds before the calendar automatically returns it it's default viewing section. Set `0` to disable automatic re-centering. |
+| `start_day_entity` | unset | Optional entity whose `YYYY-MM-DD` or `YYYY-MM-DD HH:mm:ss` state determines the first displayed day. An `input_datetime` with a date is the intended dashboard-navigation helper; when omitted or invalid, the card starts today. |
 
 ### Date navigation with an entity
 
@@ -166,6 +168,7 @@ The Home Assistant card editor exposes the common options in three groups:
 - **View & schedule** — title, day count, visible hours, grid interval, a weekday toggle group for skipped days, current-time line, and overlap limit.
 - **Interactions** — show event details on tap and optionally show maps for event locations.
 - **Layout & density** — automatic height with pixels per hour, or a fixed-height timeline.
+- **Look Around** — scrolling mode plus toggles for origin snapping and automatic re-centering; these controls are disabled when the mode is None.
 
 Less-common operational settings, such as `refresh_interval`, remain available in YAML. The card refreshes calendar data every 30 minutes by default. If a calendar request fails, it performs up to two one-minute recovery retries before returning to the normal cadence.
 

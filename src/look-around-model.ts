@@ -50,11 +50,64 @@ export const LOOK_AROUND_VERTICAL_BUFFER_MINUTES = 2 * 60;
 export const LOOK_AROUND_MODES = ['full', 'horizontal', 'vertical', 'none'] as const;
 export type LookAroundMode = typeof LOOK_AROUND_MODES[number];
 
-/** Invalid, omitted, and legacy boolean values deliberately fall back to static mode. */
+/** User-facing YAML shape. */
+export type LookAroundSettings = {
+  mode?: LookAroundMode;
+  /** Pixels of accumulated input required to release the configured origin. Zero disables origin snapping. */
+  origin_snap_distance?: number;
+  /** Seconds before returning to the configured origin. Zero disables automatic re-centering. */
+  automatic_recenter?: number;
+};
+
+export type LookAroundConfig = LookAroundSettings;
+
+export type NormalizedLookAroundSettings = Required<LookAroundSettings>;
+
+/** Invalid or omitted modes resolve to the static view. */
 export function normalizeLookAroundMode(value: unknown): LookAroundMode {
   return typeof value === 'string' && LOOK_AROUND_MODES.includes(value as LookAroundMode)
     ? value as LookAroundMode
     : 'none';
+}
+
+/** Normalize the nested configuration into runtime defaults. */
+export function normalizeLookAroundSettings(value: unknown): NormalizedLookAroundSettings {
+  const settings = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+  const originSnapDistance = settings?.origin_snap_distance;
+  const automaticRecenter = settings?.automatic_recenter;
+  return {
+    mode: normalizeLookAroundMode(settings?.mode),
+    origin_snap_distance: typeof originSnapDistance === 'number' && Number.isFinite(originSnapDistance) && originSnapDistance >= 0
+      ? originSnapDistance
+      : LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX,
+    automatic_recenter: typeof automaticRecenter === 'number' && Number.isFinite(automaticRecenter) && automaticRecenter >= 0
+      ? automaticRecenter
+      : LOOK_AROUND_RESET_DELAY_MS / 1_000,
+  };
+}
+
+/** Validate the nested YAML configuration. */
+export function validateLookAroundSettings(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return ['Look around must be an object with mode, origin_snap_distance, and automatic_recenter.'];
+  }
+  const settings = value as Record<string, unknown>;
+  const errors: string[] = [];
+  if (settings.mode !== undefined && normalizeLookAroundMode(settings.mode) === 'none' && settings.mode !== 'none') {
+    errors.push('Look around mode must be none, horizontal, vertical, or full.');
+  }
+  if (settings.origin_snap_distance !== undefined &&
+      (typeof settings.origin_snap_distance !== 'number' || !Number.isFinite(settings.origin_snap_distance) || settings.origin_snap_distance < 0)) {
+    errors.push('Origin snap distance must be a non-negative number of pixels.');
+  }
+  if (settings.automatic_recenter !== undefined &&
+      (typeof settings.automatic_recenter !== 'number' || !Number.isFinite(settings.automatic_recenter) || settings.automatic_recenter < 0)) {
+    errors.push('Automatic recenter must be a non-negative number of seconds.');
+  }
+  return errors;
 }
 
 export function hasHorizontalLookAround(mode: LookAroundMode): boolean {

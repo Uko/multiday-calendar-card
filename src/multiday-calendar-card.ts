@@ -26,19 +26,19 @@ import { CALENDAR_VISUAL_LAYOUT, timeAxisWidthPx } from './visual-layout';
 import { parseTime } from './editor-model';
 import {
   LOOK_AROUND_BUFFER_DAYS,
-  LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX,
-  LOOK_AROUND_RESET_DELAY_MS,
   LOOK_AROUND_VERTICAL_BUFFER_MINUTES,
   calendarPointToRawScroll,
   hasHorizontalLookAround,
   hasVerticalLookAround,
   lookAroundVerticalRange,
-  normalizeLookAroundMode,
+  normalizeLookAroundSettings,
   rawScrollToCalendarPoint,
   rebaseRawScrollForGeometry,
+  validateLookAroundSettings,
   type CalendarScrollGeometry,
   type CalendarScrollPoint,
-  type LookAroundMode,
+  type LookAroundConfig,
+  type NormalizedLookAroundSettings,
 } from './look-around-model';
 import { normalizeTapAction, type EventAction } from './event-interaction';
 import { LOCATION_MAP_PROVIDERS, type LocationMapProvider } from './event-detail-model';
@@ -84,8 +84,8 @@ type MultiDayCalendarCardConfig = {
   height?: number | null;
   /** Timeline height in pixels per visible hour when height is omitted. Defaults to 56. */
   hour_height?: number;
-  /** Optional scroll axes around the configured date/time origin. */
-  look_around?: LookAroundMode;
+  /** Optional scroll behavior around the configured date/time origin. */
+  look_around?: LookAroundConfig;
   show_now_line?: boolean;
   /** Two-letter weekday names to omit from the display, for example ['sa', 'su']. */
   skip_days?: DayName[];
@@ -115,8 +115,10 @@ declare global {
 }
 
 type NormalizedCardConfig = Required<
-  Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_day_entity' | 'location_map_provider' | 'custom_nominatim_url'>
-> & Pick<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_day_entity' | 'location_map_provider' | 'custom_nominatim_url'>;
+  Omit<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_day_entity' | 'location_map_provider' | 'custom_nominatim_url' | 'look_around'>
+> & Pick<MultiDayCalendarCardConfig, 'type' | 'title' | 'start_day_entity' | 'location_map_provider' | 'custom_nominatim_url'> & {
+  look_around: NormalizedLookAroundSettings;
+};
 
 const DEFAULT_CONFIG: Omit<NormalizedCardConfig, 'type' | 'title'> = {
   days: 2,
@@ -126,7 +128,11 @@ const DEFAULT_CONFIG: Omit<NormalizedCardConfig, 'type' | 'title'> = {
   refresh_interval: 30,
   height: null,
   hour_height: 56,
-  look_around: 'none',
+  look_around: {
+    mode: 'none',
+    origin_snap_distance: 30,
+    automatic_recenter: 30,
+  },
   show_now_line: true,
   skip_days: [],
   max_simultaneous_events: 3,
@@ -296,6 +302,9 @@ class MultiDayCalendarCard extends HTMLElement {
       throw new Error('hour_height must be a positive number of pixels when height is omitted');
     }
 
+    const lookAroundErrors = validateLookAroundSettings(config.look_around);
+    if (lookAroundErrors.length > 0) throw new Error(lookAroundErrors.join(' '));
+
     const calendars = config.calendars ?? [];
     if (!calendars.every((calendar) => calendar.entity.startsWith('calendar.'))) {
       throw new Error('Every calendars entry requires a calendar.* entity');
@@ -314,7 +323,7 @@ class MultiDayCalendarCard extends HTMLElement {
       max_simultaneous_events: maxSimultaneousEvents,
       height,
       hour_height: hourHeight,
-      look_around: normalizeLookAroundMode(config.look_around),
+      look_around: normalizeLookAroundSettings(config.look_around),
       calendars,
       tap_action: normalizeTapAction(config.tap_action),
       show_location_map: config.show_location_map === true,
@@ -438,7 +447,7 @@ class MultiDayCalendarCard extends HTMLElement {
     const configuredStartMinutes = parseTime(this._config.start_time)!;
     const configuredEndMinutes = parseTime(this._config.end_time)!;
     const { startMinutes, endMinutes } = lookAroundVerticalRange(
-      this._config.look_around,
+      this._config.look_around.mode,
       configuredStartMinutes,
       configuredEndMinutes,
     );
@@ -650,11 +659,11 @@ class MultiDayCalendarCard extends HTMLElement {
 
   /** Keep the configured vertical time range fully visible in a fixed full-look-around card. */
   private syncFixedVerticalLookAroundGeometry(): void {
-    if (!this._config || this._config.height === null || !hasVerticalLookAround(this._config.look_around)) return;
+    if (!this._config || this._config.height === null || !hasVerticalLookAround(this._config.look_around.mode)) return;
     const configuredStart = parseTime(this._config.start_time);
     const configuredEnd = parseTime(this._config.end_time);
     if (configuredStart === undefined || configuredEnd === undefined) return;
-    const range = lookAroundVerticalRange(this._config.look_around, configuredStart, configuredEnd);
+    const range = lookAroundVerticalRange(this._config.look_around.mode, configuredStart, configuredEnd);
     const configuredMinutes = configuredEnd - configuredStart;
     if (configuredMinutes <= 0) return;
     const viewport = this.querySelector<HTMLElement>('.calendar-viewport.native-vertical-time-axis');
@@ -680,7 +689,7 @@ class MultiDayCalendarCard extends HTMLElement {
     const configuredStartMinutes = parseTime(config.start_time)!;
     const configuredEndMinutes = parseTime(config.end_time)!;
     const { startMinutes, endMinutes } = lookAroundVerticalRange(
-      config.look_around,
+      config.look_around.mode,
       configuredStartMinutes,
       configuredEndMinutes,
     );
@@ -854,12 +863,13 @@ class MultiDayCalendarCard extends HTMLElement {
     this._lookAroundAnimationFrameId = requestAnimationFrame(animate);
   }
 
-  private scheduleLookAroundReset(reset: () => void): void {
+  private scheduleLookAroundReset(delaySeconds: number, reset: () => void): void {
+    if (delaySeconds === 0) return;
     if (this._lookAroundResetTimerId !== undefined) clearTimeout(this._lookAroundResetTimerId);
     this._lookAroundResetTimerId = window.setTimeout(() => {
       this._lookAroundResetTimerId = undefined;
       reset();
-    }, LOOK_AROUND_RESET_DELAY_MS);
+    }, delaySeconds * 1_000);
   }
 
   private viewportDays(viewport: HTMLElement): Date[] {
@@ -884,13 +894,15 @@ class MultiDayCalendarCard extends HTMLElement {
   }
 
   private bindLookAround(initialScrollPosition?: { left: number; top: number }): void {
-    if (!this._config || this._config.look_around === 'none') return;
+    if (!this._config || this._config.look_around.mode === 'none') return;
     const viewport = this.querySelector<HTMLElement>('.calendar-viewport');
     if (!viewport) return;
     let scrollPositionToRestore = initialScrollPosition;
 
-    const horizontal = hasHorizontalLookAround(this._config.look_around);
-    const vertical = hasVerticalLookAround(this._config.look_around);
+    const horizontal = hasHorizontalLookAround(this._config.look_around.mode);
+    const vertical = hasVerticalLookAround(this._config.look_around.mode);
+    const originSnapDistance = this._config.look_around.origin_snap_distance;
+    const automaticRecenter = this._config.look_around.automatic_recenter;
     const anchorColumn = (): HTMLElement | null => viewport.querySelector('[data-look-around-anchor]');
     const anchorVertical = (): HTMLElement | null => viewport.querySelector('[data-look-around-vertical-anchor]');
     const nativeTimeAxisWidth = (): number => viewport.classList.contains('native-vertical-time-axis')
@@ -915,7 +927,7 @@ class MultiDayCalendarCard extends HTMLElement {
       const viewportBounds = viewport.getBoundingClientRect();
       const headerHeight = viewport.querySelector<HTMLElement>('.day-header')?.getBoundingClientRect().height ?? 0;
       const verticalRange = lookAroundVerticalRange(
-        this._config!.look_around,
+        this._config!.look_around.mode,
         parseTime(this._config!.start_time)!,
         parseTime(this._config!.end_time)!,
       );
@@ -944,7 +956,7 @@ class MultiDayCalendarCard extends HTMLElement {
         (!vertical || Math.abs(point.y) <= 1 / scrollGeometry.pixelsPerMinute);
     };
     let initialized = false;
-    let originLocked = true;
+    let originLocked = originSnapDistance > 0;
     let accumulatedOriginScrollLeft = 0;
     let accumulatedOriginScrollTop = 0;
     const positionAtStartDay = (): boolean => {
@@ -966,7 +978,7 @@ class MultiDayCalendarCard extends HTMLElement {
           (vertical && Math.abs(viewport.scrollTop - startTop) > 1));
       scrollPositionToRestore = undefined;
       setRecenterButtonVisibility(restoredOffOrigin);
-      originLocked = !restoredOffOrigin;
+      originLocked = originSnapDistance > 0 && !restoredOffOrigin;
       accumulatedOriginScrollLeft = 0;
       accumulatedOriginScrollTop = 0;
       initialized = true;
@@ -992,13 +1004,13 @@ class MultiDayCalendarCard extends HTMLElement {
       if (!initialized || this._lookAroundAnimating) return;
       this._lookAroundScrollInProgress = false;
       refreshGeometryAfterHeaderUpdate();
-      this.scheduleLookAroundReset(resetLookAround);
+      this.scheduleLookAroundReset(automaticRecenter, resetLookAround);
     };
     const releaseOriginLock = (deltaLeft: number, deltaTop: number): void => {
       accumulatedOriginScrollLeft += deltaLeft;
       accumulatedOriginScrollTop += deltaTop;
-      if (Math.abs(accumulatedOriginScrollLeft) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX &&
-          Math.abs(accumulatedOriginScrollTop) < LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX) return;
+      if (Math.abs(accumulatedOriginScrollLeft) < originSnapDistance &&
+          Math.abs(accumulatedOriginScrollTop) < originSnapDistance) return;
       originLocked = false;
       if (horizontal) viewport.scrollLeft = startLeft + accumulatedOriginScrollLeft;
       if (vertical) viewport.scrollTop = startTop + accumulatedOriginScrollTop;
@@ -1051,7 +1063,7 @@ class MultiDayCalendarCard extends HTMLElement {
       refreshGeometryAfterHeaderUpdate();
       hideRecenterButton();
       this.querySelector<HTMLElement>('.time-axis-bottom-fade')?.classList.remove('is-active');
-      originLocked = true;
+      originLocked = originSnapDistance > 0;
       accumulatedOriginScrollLeft = 0;
       accumulatedOriginScrollTop = 0;
     });
@@ -1142,9 +1154,9 @@ class MultiDayCalendarCard extends HTMLElement {
     const locale = this._hass?.locale?.language ?? navigator.language ?? 'en';
     const configuredStartMinutes = parseTime(config.start_time)!;
     const configuredEndMinutes = parseTime(config.end_time)!;
-    const horizontalLookAround = hasHorizontalLookAround(config.look_around);
-    const verticalLookAround = hasVerticalLookAround(config.look_around);
-    const verticalRange = lookAroundVerticalRange(config.look_around, configuredStartMinutes, configuredEndMinutes);
+    const horizontalLookAround = hasHorizontalLookAround(config.look_around.mode);
+    const verticalLookAround = hasVerticalLookAround(config.look_around.mode);
+    const verticalRange = lookAroundVerticalRange(config.look_around.mode, configuredStartMinutes, configuredEndMinutes);
     const startMinutes = verticalRange.startMinutes;
     const endMinutes = verticalRange.endMinutes;
     const minutesVisible = endMinutes - startMinutes;
