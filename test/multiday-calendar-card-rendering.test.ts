@@ -202,6 +202,47 @@ test('Home Assistant reconnect refreshes calendar events without re-rendering th
   assert.equal(renderCount, 0);
 });
 
+test('a failed calendar request updates the error overlay without re-rendering and clears it on recovery', async () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  const card = new CalendarCard() as FakeHTMLElement & {
+    setConfig(config: { type: string; calendars: Array<{ entity: string }> }): void;
+    render(): void;
+    loadEvents(): Promise<void>;
+    updateLoadingIndicator(): void;
+    updateLoadedDayColumns(dayKeys: readonly string[]): void;
+    updateStatusMessage(): void;
+    scheduleRecoveryRefresh(): void;
+    cancelRecoveryRefresh(): void;
+    _hass: { callApi<T>(method: string, path: string): Promise<T> };
+    _error?: string;
+  };
+  let renderCount = 0;
+  const statusUpdates: Array<string | undefined> = [];
+  card.render = () => { renderCount += 1; };
+  card.updateLoadingIndicator = () => undefined;
+  card.updateLoadedDayColumns = () => undefined;
+  card.updateStatusMessage = () => { statusUpdates.push(card._error); };
+  card.scheduleRecoveryRefresh = () => undefined;
+  card.cancelRecoveryRefresh = () => undefined;
+  card.setConfig({ type: 'custom:multiday-calendar-card', calendars: [{ entity: 'calendar.work' }] });
+  renderCount = 0;
+  statusUpdates.length = 0;
+  card._hass = { callApi: async () => { throw new Error('probe failure'); } };
+
+  await card.loadEvents();
+
+  assert.equal(renderCount, 0);
+  assert.deepEqual(statusUpdates, [undefined, 'probe failure']);
+
+  card._hass = { callApi: async <T>() => [] as T };
+  await card.loadEvents();
+
+  assert.equal(renderCount, 0);
+  assert.equal(statusUpdates.at(-1), undefined);
+});
+
 test('look-around caches an exposed day, avoids duplicate requests, and evicts it on normal refresh', async () => {
   const CalendarCard = elementRegistry.get('multiday-calendar-card');
   assert.ok(CalendarCard);
@@ -214,6 +255,7 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
     loadEvents(force?: boolean, days?: readonly Date[]): Promise<void>;
     updateLoadedDayColumns(dayKeys: readonly string[]): void;
     updateLoadingIndicator(): void;
+    updateStatusMessage(): void;
     _activeStartDay: Date;
     _hass: { callApi<T>(method: string, path: string): Promise<T> };
     _eventsByDay: Map<string, unknown>;
@@ -224,6 +266,7 @@ test('look-around caches an exposed day, avoids duplicate requests, and evicts i
   card.render = () => { renderCount += 1; };
   card.updateLoadedDayColumns = (dayKeys) => { patchedDays.push([...dayKeys]); };
   card.updateLoadingIndicator = () => { loadingTransitions.push((card as unknown as { _loading: boolean })._loading); };
+  card.updateStatusMessage = () => undefined;
   card.setConfig({
     type: 'custom:multiday-calendar-card',
     calendars: [{ entity: 'calendar.work' }],
@@ -272,6 +315,7 @@ test('an invalidated request cannot clear a replacement request loading ownershi
     invalidateEventCache(): void;
     updateLoadingIndicator(): void;
     updateLoadedDayColumns(dayKeys: readonly string[]): void;
+    updateStatusMessage(): void;
     _activeStartDay: Date;
     _hass: { callApi<T>(method: string, path: string): Promise<T> };
     _loadingDays: Set<string>;
@@ -286,6 +330,7 @@ test('an invalidated request cannot clear a replacement request loading ownershi
   card._activeStartDay = new Date(2026, 0, 1);
   card.updateLoadingIndicator = () => undefined;
   card.updateLoadedDayColumns = () => undefined;
+  card.updateStatusMessage = () => undefined;
   card._hass = {
     callApi: <T>() => {
       requestCount += 1;

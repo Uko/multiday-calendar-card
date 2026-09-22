@@ -1539,6 +1539,7 @@ class MultiDayCalendarCard extends HTMLElement {
         this._loading = true;
         this._error = undefined;
         this.updateLoadingIndicator();
+        this.updateStatusMessage();
         try {
             const eventGroups = await Promise.all(this._config.calendars.map(async (calendar) => ({
                 calendar,
@@ -1566,8 +1567,34 @@ class MultiDayCalendarCard extends HTMLElement {
             requestedKeys.forEach((key) => this._loadingDays.delete(key));
             this._loading = this._loadingDays.size > 0;
             this.updateLoadingIndicator();
+            this.updateStatusMessage();
             this.updateLoadedDayColumns(requestedKeys);
         }
+    }
+    /** Render only the fetch-error overlay so loading does not recreate the calendar viewport. */
+    statusMessageMarkup() {
+        if (!this._error)
+            return '';
+        return `<div class="status-overlay" role="alert" aria-live="assertive">
+      <div class="status error">Unable to load calendar events: ${escapeHtml(this._error)}</div>
+      <button class="status-dismiss" type="button" aria-label="Dismiss calendar error" title="Dismiss calendar error">×</button>
+    </div>`;
+    }
+    updateStatusMessage() {
+        const existing = this.querySelector('.status-overlay');
+        const markup = this.statusMessageMarkup();
+        if (!markup) {
+            existing?.remove();
+            return;
+        }
+        if (existing)
+            existing.outerHTML = markup;
+        else
+            this.querySelector('.schedule')?.insertAdjacentHTML('beforebegin', markup);
+        this.querySelector('.status-dismiss')?.addEventListener('click', () => {
+            this._error = undefined;
+            this.updateStatusMessage();
+        }, { once: true });
     }
     /** The indicator is an overlay so activity never changes the card's measured layout. */
     updateLoadingIndicator() {
@@ -2267,7 +2294,7 @@ class MultiDayCalendarCard extends HTMLElement {
         const titlePlacement = cardTitlePlacement(config.title, fixedHeight);
         const accessibleTitle = title ?? 'Multi-day calendar';
         const status = this._error
-            ? `<div class="status error">Unable to load calendar events: ${escapeHtml(this._error)}</div>`
+            ? this.statusMessageMarkup()
             : config.calendars.length === 0
                 ? '<div class="status">Add one or more calendar.* entities in the card configuration.</div>'
                 : '';
@@ -2312,11 +2339,16 @@ class MultiDayCalendarCard extends HTMLElement {
       @media (prefers-reduced-motion: reduce) { .loading-indicator::before { width: 100%; transform: none; animation: none; background: var(--primary-color); } }
       .header-height-animated .day-header, .header-height-animated .time-axis-spacer, .header-height-animated .time-axis-top-fade { transition: height 220ms ease; }
       @media (prefers-reduced-motion: reduce) { .header-height-animated .day-header, .header-height-animated .time-axis-spacer, .header-height-animated .time-axis-top-fade { transition: none; } }
-      .wrapper { padding: ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px ${CALENDAR_VISUAL_LAYOUT.paddingRightPx}px 12px ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px; overflow-x: auto; }
+      .wrapper { position: relative; padding: ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px ${CALENDAR_VISUAL_LAYOUT.paddingRightPx}px 12px ${CALENDAR_VISUAL_LAYOUT.paddingLeftPx}px; overflow-x: auto; }
       .wrapper.fixed-height { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; }
       .fixed-height-title { flex: 0 0 auto; margin: 8px 0 16px; font-size: 24px; font-weight: 400; line-height: 1.2; }
       .status { margin: 0 0 10px; color: var(--secondary-text-color); }
       .status.error { color: var(--error-color); }
+      .status-overlay { position: absolute; z-index: 11; top: 0; right: 0; left: 0; box-sizing: border-box; display: flex; align-items: flex-start; gap: 10px; min-height: 100%; padding: 16px; overflow: auto; background: color-mix(in srgb, var(--card-background-color) 80%, transparent); backdrop-filter: blur(2px); }
+      .status-overlay .status { flex: 1; margin: 0; padding: 12px; border: 1px solid color-mix(in srgb, var(--error-color) 55%, var(--divider-color)); border-radius: 8px; background: color-mix(in srgb, var(--card-background-color) 92%, var(--error-color)); box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); }
+      .status-dismiss { flex: 0 0 auto; width: 32px; height: 32px; padding: 0; border: 1px solid var(--divider-color); border-radius: 50%; background: var(--card-background-color); color: var(--primary-text-color); font-size: 24px; line-height: 28px; cursor: pointer; }
+      .status-dismiss:hover { background: color-mix(in srgb, var(--card-background-color) 85%, var(--primary-color)); }
+      .status-dismiss:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
       .schedule { --time-axis-width: ${measuredTimeAxisWidth}px; position: relative; z-index: 0; isolation: isolate; display: grid; grid-template-columns: var(--time-axis-width) minmax(0, 1fr); min-width: 0; }
       .look-around-recenter { position: absolute; z-index: 6; top: 0; left: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--primary-color); border-radius: 50%; background: var(--primary-color); color: var(--text-primary-color); line-height: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); cursor: pointer; opacity: 1; transform: scale(1); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear; }
       .look-around-recenter.is-hidden { visibility: hidden; pointer-events: none; opacity: 0; transform: scale(0.9); transition: opacity 280ms ease, transform 280ms ease, visibility 0s linear 280ms; }
@@ -2384,6 +2416,7 @@ class MultiDayCalendarCard extends HTMLElement {
     `;
         style.setAttribute('data-multiday-calendar-card', '');
         this.appendChild(style);
+        this.updateStatusMessage();
         this.bindEventActions();
         if (horizontalLookAround || verticalLookAround)
             this.bindLookAround(preservedScrollPosition);
