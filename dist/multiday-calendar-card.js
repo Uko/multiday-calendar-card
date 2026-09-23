@@ -397,6 +397,13 @@ const LOOK_AROUND_ORIGIN_SNAP_DISTANCE_PX = 30;
 const LOOK_AROUND_BUFFER_DAYS = 90;
 /** Minutes rendered before and after the configured daily time range. */
 const LOOK_AROUND_VERTICAL_BUFFER_MINUTES = 2 * 60;
+/** Return the active dates with one fixed rendered buffer before and after them. */
+function lookAroundVisibleDays(displayStartDay, activeDays, skipDays = []) {
+    return [
+        ...visibleDaysBefore(displayStartDay, LOOK_AROUND_BUFFER_DAYS, skipDays),
+        ...visibleDays(displayStartDay, LOOK_AROUND_BUFFER_DAYS + activeDays, skipDays),
+    ];
+}
 const LOOK_AROUND_MODES = ['full', 'horizontal', 'vertical', 'none'];
 /** Invalid or omitted modes resolve to the static view. */
 function normalizeLookAroundMode(value) {
@@ -1800,6 +1807,10 @@ class MultiDayCalendarCard extends HTMLElement {
             cancelAnimationFrame(this._lookAroundGeometryAnimationFrameId);
             this._lookAroundGeometryAnimationFrameId = undefined;
         }
+        if (this._lookAroundViewportAnimationFrameId !== undefined) {
+            cancelAnimationFrame(this._lookAroundViewportAnimationFrameId);
+            this._lookAroundViewportAnimationFrameId = undefined;
+        }
         if (this._lookAroundResizeObserver !== undefined) {
             this._lookAroundResizeObserver.disconnect();
             this._lookAroundResizeObserver = undefined;
@@ -1808,6 +1819,15 @@ class MultiDayCalendarCard extends HTMLElement {
             this._lookAroundHeaderResizeObserver.disconnect();
             this._lookAroundHeaderResizeObserver = undefined;
         }
+    }
+    /** Coalesce high-frequency native scroll events into one viewport update per frame. */
+    scheduleLookAroundViewportUpdate(update) {
+        if (this._lookAroundViewportAnimationFrameId !== undefined)
+            return;
+        this._lookAroundViewportAnimationFrameId = requestAnimationFrame(() => {
+            this._lookAroundViewportAnimationFrameId = undefined;
+            update();
+        });
     }
     animateLookAroundScroll(viewport, left, top, onComplete) {
         if (this._lookAroundAnimationFrameId !== undefined)
@@ -2110,7 +2130,9 @@ class MultiDayCalendarCard extends HTMLElement {
             // is deferred until scrolling settles so the grid does not resize mid-gesture.
             if (initialized || this._lookAroundAnimating)
                 this._lookAroundScrollInProgress = true;
-            void this.loadEvents(false, this.viewportDays(viewport));
+            this.scheduleLookAroundViewportUpdate(() => {
+                void this.loadEvents(false, this.viewportDays(viewport));
+            });
             if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis'))
                 timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
             const calendarPoint = scrollGeometry
@@ -2175,10 +2197,7 @@ class MultiDayCalendarCard extends HTMLElement {
         /** The requested start date may be skipped; this is the first day actually displayed. */
         const displayStartDay = days[0];
         const lookAroundDays = horizontalLookAround
-            ? [
-                ...visibleDaysBefore(displayStartDay, LOOK_AROUND_BUFFER_DAYS, config.skip_days),
-                ...visibleDays(displayStartDay, LOOK_AROUND_BUFFER_DAYS * 2 + config.days, config.skip_days),
-            ]
+            ? lookAroundVisibleDays(displayStartDay, config.days, config.skip_days)
             : days;
         const hasLeadingSkippedDays = hasSkippedDaysBeforeFirstVisibleDay(range.start, days[0]);
         const dayHeaderHeight = calendarHeaderHeight(Math.max(0, ...days.map((day) => this.eventsForDay(day).filter(({ event }) => allDayEventPlacementForDay(event, day) !== undefined).length)));

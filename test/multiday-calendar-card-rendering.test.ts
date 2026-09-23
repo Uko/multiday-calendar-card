@@ -354,3 +354,38 @@ test('an invalidated request cannot clear a replacement request loading ownershi
   assert.equal(card._loadingDays.has('2026-0-1'), false);
   assert.equal(card._loading, false);
 });
+
+test('look-around viewport work is limited to one callback per animation frame', () => {
+  const CalendarCard = elementRegistry.get('multiday-calendar-card');
+  assert.ok(CalendarCard);
+
+  const card = new CalendarCard() as FakeHTMLElement & {
+    scheduleLookAroundViewportUpdate(callback: () => void): void;
+  };
+  const callbacks: FrameRequestCallback[] = [];
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (callback): number => {
+    callbacks.push(callback);
+    return callbacks.length;
+  };
+
+  try {
+    let updateCount = 0;
+    const update = (): void => { updateCount += 1; };
+
+    card.scheduleLookAroundViewportUpdate(update);
+    card.scheduleLookAroundViewportUpdate(update);
+    card.scheduleLookAroundViewportUpdate(update);
+
+    assert.equal(callbacks.length, 1);
+    assert.equal(updateCount, 0);
+
+    callbacks.shift()!(0);
+    assert.equal(updateCount, 1);
+
+    card.scheduleLookAroundViewportUpdate(update);
+    assert.equal(callbacks.length, 1);
+  } finally {
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  }
+});

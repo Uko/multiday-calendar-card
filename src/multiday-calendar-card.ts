@@ -241,6 +241,7 @@ class MultiDayCalendarCard extends HTMLElement {
   private _lookAroundScrollEndTimerId?: number;
   private _lookAroundAnimationFrameId?: number;
   private _lookAroundGeometryAnimationFrameId?: number;
+  private _lookAroundViewportAnimationFrameId?: number;
   private _lookAroundResizeObserver?: ResizeObserver;
   private _lookAroundHeaderResizeObserver?: ResizeObserver;
   private _lookAroundAnimating = false;
@@ -862,6 +863,10 @@ class MultiDayCalendarCard extends HTMLElement {
       cancelAnimationFrame(this._lookAroundGeometryAnimationFrameId);
       this._lookAroundGeometryAnimationFrameId = undefined;
     }
+    if (this._lookAroundViewportAnimationFrameId !== undefined) {
+      cancelAnimationFrame(this._lookAroundViewportAnimationFrameId);
+      this._lookAroundViewportAnimationFrameId = undefined;
+    }
     if (this._lookAroundResizeObserver !== undefined) {
       this._lookAroundResizeObserver.disconnect();
       this._lookAroundResizeObserver = undefined;
@@ -870,6 +875,15 @@ class MultiDayCalendarCard extends HTMLElement {
       this._lookAroundHeaderResizeObserver.disconnect();
       this._lookAroundHeaderResizeObserver = undefined;
     }
+  }
+
+  /** Coalesce high-frequency native scroll events into one viewport update per frame. */
+  private scheduleLookAroundViewportUpdate(update: () => void): void {
+    if (this._lookAroundViewportAnimationFrameId !== undefined) return;
+    this._lookAroundViewportAnimationFrameId = requestAnimationFrame(() => {
+      this._lookAroundViewportAnimationFrameId = undefined;
+      update();
+    });
   }
 
   private animateLookAroundScroll(viewport: HTMLElement, left: number, top: number, onComplete?: () => void): void {
@@ -1150,7 +1164,9 @@ class MultiDayCalendarCard extends HTMLElement {
       // Native scrolling remains untouched; it only requests cache-miss days. Geometry
       // is deferred until scrolling settles so the grid does not resize mid-gesture.
       if (initialized || this._lookAroundAnimating) this._lookAroundScrollInProgress = true;
-      void this.loadEvents(false, this.viewportDays(viewport));
+      this.scheduleLookAroundViewportUpdate(() => {
+        void this.loadEvents(false, this.viewportDays(viewport));
+      });
       if (vertical && timeLabels && !viewport.classList.contains('native-vertical-time-axis')) timeLabels.style.transform = `translateY(${-viewport.scrollTop}px)`;
       const calendarPoint = scrollGeometry
         ? rawScrollToCalendarPoint({ left: viewport.scrollLeft, top: viewport.scrollTop }, scrollGeometry)
