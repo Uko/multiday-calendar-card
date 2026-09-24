@@ -1,6 +1,6 @@
 # Multiday Calendar Card [![Tests](https://github.com/Uko/multiday-calendar-card/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/Uko/multiday-calendar-card/actions/workflows/test.yaml) [![HACS validation](https://github.com/Uko/multiday-calendar-card/actions/workflows/validate.yaml/badge.svg?branch=main)](https://github.com/Uko/multiday-calendar-card/actions/workflows/validate.yaml)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Uko&repository=multiday-calendar-card&category=plugin)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Uko&repository=multiday-calendar-card&category=plugin) [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W1681LC)
 
 A Home Assistant Dashboard card that turns one or more `calendar.*` entities into a readable multi-day schedule. It shows day columns, a vertical time axis, duration-sized event blocks, all-day events, and overlapping events in one view.
 
